@@ -1,0 +1,42 @@
+html,
+body,
+#app {
+  min-height: 100%;
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #f4f6f8;
+  color: #14213d;
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.q-page {
+  min-height: 100vh;
+}
+
+.q-card {
+  border-radius: 18px;
+}
+
+.metric-card {
+  min-height: 128px;
+}
+
+.q-table thead th {
+  font-weight: 700;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  letter-spacing: -0.02em;
+}
