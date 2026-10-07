@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-label="Fotografía predeterminada de jugador">
+  <rect width="160" height="160" rx="28" fill="#e8f0eb"/>
+  <circle cx="80" cy="59" r="27" fill="#9aaca2"/>
+  <path d="M31 145c3-31 22-48 49-48s46 17 49 48" fill="#173d2c"/>
+  <path d="M58 103 80 126l22-23" fill="none" stroke="#1f9268" stroke-linecap="round" stroke-linejoin="round" stroke-width="8"/>
+</svg>
