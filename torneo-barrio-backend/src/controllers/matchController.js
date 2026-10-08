@@ -2,6 +2,38 @@ const Match = require('../models/Match');
 const Team = require('../models/Team');
 const Player = require('../models/Player');
 
+// Normalizador de partidos para garantizar que los equipos siempre tengan name y shortName
+const formatMatch = (matchDoc) => {
+    if (!matchDoc) return null;
+    const m = typeof matchDoc.toObject === 'function' ? matchDoc.toObject() : matchDoc;
+
+    const normalizeTeamRef = (teamRef) => {
+        if (!teamRef) return { name: 'Equipo', shortName: 'EQU', logoUrl: '/images/default-team.svg' };
+        if (typeof teamRef !== 'object') return teamRef;
+        const name = teamRef.name || teamRef.nombre || 'Equipo';
+        const shortName = teamRef.shortName || teamRef.siglas || name.slice(0, 3).toUpperCase();
+        const logoUrl = teamRef.logoUrl || teamRef.escudo_url || '/images/default-team.svg';
+        return {
+            ...teamRef,
+            name,
+            nombre: name,
+            shortName,
+            siglas: shortName,
+            logoUrl,
+            escudo_url: logoUrl,
+        };
+    };
+
+    return {
+        ...m,
+        homeTeam: normalizeTeamRef(m.homeTeam),
+        awayTeam: normalizeTeamRef(m.awayTeam),
+    };
+};
+
+const TEAM_FIELDS = 'name nombre shortName siglas logoUrl escudo_url stadium cancha';
+const PLAYER_FIELDS = 'name nombre number dorsal photoUrl';
+
 // Función para obtener partidos (con soporte de filtros y paginación opcional)
 const getMatches = async (req, res) => {
     try {
@@ -11,27 +43,29 @@ const getMatches = async (req, res) => {
             filter.status = String(req.query.status).trim().toUpperCase();
         }
 
-        // Paginación opcional: ?page=1&limit=20
-        // Si no se envían, retorna todo (comportamiento original)
         const page  = req.query.page  ? Math.max(1, Number(req.query.page))  : null;
         const limit = req.query.limit ? Math.max(1, Number(req.query.limit)) : null;
 
         const query = Match.find(filter)
-            .populate('homeTeam', 'name shortName logoUrl')
-            .populate('awayTeam', 'name shortName logoUrl')
+            .populate('homeTeam', TEAM_FIELDS)
+            .populate('awayTeam', TEAM_FIELDS)
+            .populate('goals.player', PLAYER_FIELDS)
+            .populate('goals.team', TEAM_FIELDS)
+            .populate('events.player', PLAYER_FIELDS)
+            .populate('events.team', TEAM_FIELDS)
             .sort({ matchday: 1, date: 1 });
 
         if (page && limit) {
             const total = await Match.countDocuments(filter);
             const matches = await query.skip((page - 1) * limit).limit(limit);
             return res.status(200).json({
-                data: matches,
+                data: matches.map(formatMatch),
                 pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
             });
         }
 
         const matches = await query;
-        res.status(200).json(matches);
+        res.status(200).json(matches.map(formatMatch));
 
     } catch (error) {
         res.status(500).json({ message: 'Error al obtener los partidos', error: error.message });
@@ -42,18 +76,18 @@ const getMatches = async (req, res) => {
 const getMatchById = async (req, res) => {
     try {
         const match = await Match.findById(req.params.id)
-            .populate('homeTeam', 'name shortName logoUrl')
-            .populate('awayTeam', 'name shortName logoUrl')
-            .populate('goals.player', 'name number')
-            .populate('goals.team', 'name shortName')
-            .populate('events.player', 'name number')
-            .populate('events.team', 'name shortName');
+            .populate('homeTeam', TEAM_FIELDS)
+            .populate('awayTeam', TEAM_FIELDS)
+            .populate('goals.player', PLAYER_FIELDS)
+            .populate('goals.team', TEAM_FIELDS)
+            .populate('events.player', PLAYER_FIELDS)
+            .populate('events.team', TEAM_FIELDS);
 
         if (!match) {
             return res.status(404).json({ message: 'Partido no encontrado' });
         }
 
-        res.status(200).json(match);
+        res.status(200).json(formatMatch(match));
 
     } catch (error) {
         res.status(400).json({ message: 'ID del partido inválido', error: error.message });
@@ -93,6 +127,9 @@ const createMatch = async (req, res) => {
             return res.status(404).json({ message: 'Uno de los equipos seleccionados no existe' });
         }
 
+        const homeName = homeExist.name || homeExist.nombre || 'Equipo local';
+        const awayName = awayExist.name || awayExist.nombre || 'Equipo visitante';
+
         const invalidTeams = [];
         const [homeMatchdays, awayMatchdays] = await Promise.all([
             getFinishedMatchdaysForTeam(homeExist._id.toString()),
@@ -100,10 +137,10 @@ const createMatch = async (req, res) => {
         ]);
 
         if (homeMatchdays.length && numericMatchday <= Math.max(...homeMatchdays)) {
-            invalidTeams.push(homeExist.name);
+            invalidTeams.push(homeName);
         }
         if (awayMatchdays.length && numericMatchday <= Math.max(...awayMatchdays)) {
-            invalidTeams.push(awayExist.name);
+            invalidTeams.push(awayName);
         }
 
         if (invalidTeams.length) {
@@ -123,10 +160,10 @@ const createMatch = async (req, res) => {
         const savedMatch = await newMatch.save();
 
         const populatedMatch = await Match.findById(savedMatch._id)
-            .populate('homeTeam', 'name shortName logoUrl')
-            .populate('awayTeam', 'name shortName logoUrl');
+            .populate('homeTeam', TEAM_FIELDS)
+            .populate('awayTeam', TEAM_FIELDS);
 
-        res.status(201).json(populatedMatch);
+        res.status(201).json(formatMatch(populatedMatch));
 
     } catch (error) {
         res.status(400).json({ message: 'Error al programar el partido', error: error.message });
@@ -168,10 +205,10 @@ const updateMatch = async (req, res) => {
             updateData,
             { new: true, runValidators: true }
         )
-            .populate('homeTeam', 'name shortName logoUrl')
-            .populate('awayTeam', 'name shortName logoUrl');
+            .populate('homeTeam', TEAM_FIELDS)
+            .populate('awayTeam', TEAM_FIELDS);
 
-        res.status(200).json(updatedMatch);
+        res.status(200).json(formatMatch(updatedMatch));
 
     } catch (error) {
         res.status(400).json({ message: 'Error al actualizar el partido', error: error.message });
@@ -214,14 +251,17 @@ const updateMatchResult = async (req, res) => {
                     });
                 }
 
-                const playerBelongsToTeam = await Player.exists({
-                    _id: goal.player,
-                    team: goal.team
-                });
+                // En autogol, el jugador autor pertenece a cualquiera de los dos equipos que juegan el partido
+                const isOwnGoal = Boolean(goal.isOwnGoal);
+                const playerBelongs = isOwnGoal
+                    ? await Player.exists({ _id: goal.player, $or: [{ team: match.homeTeam }, { team: match.awayTeam }] })
+                    : await Player.exists({ _id: goal.player, team: goal.team });
 
-                if (!playerBelongsToTeam) {
+                if (!playerBelongs) {
                     return res.status(400).json({
-                        message: `El jugador no pertenece al equipo asignado para el gol`
+                        message: isOwnGoal
+                            ? `El jugador del autogol no pertenece a los equipos participantes`
+                            : `El jugador no pertenece al equipo asignado para el gol`
                     });
                 }
             }
@@ -243,19 +283,18 @@ const updateMatchResult = async (req, res) => {
 
         await match.save();
 
-        // populate() sobre el doc ya en memoria — evita segunda consulta a la BD
-        await match.populate('homeTeam', 'name shortName logoUrl');
-        await match.populate('awayTeam', 'name shortName logoUrl');
-        await match.populate('goals.player', 'name number');
-        await match.populate('goals.team', 'name shortName');
+        await match.populate('homeTeam', TEAM_FIELDS);
+        await match.populate('awayTeam', TEAM_FIELDS);
+        await match.populate('goals.player', PLAYER_FIELDS);
+        await match.populate('goals.team', TEAM_FIELDS);
 
-        res.status(200).json(match);
+        res.status(200).json(formatMatch(match));
     } catch (error) {
         res.status(400).json({ message: 'Error al registrar el resultado', error: error.message });
     }
 };
 
-// Función para registrar eventos del partido (asistencias y tarjetas)
+// Función para registrar eventos del partido (asistencias, tarjetas y autogol)
 const updateMatchEvents = async (req, res) => {
     try {
         const { events } = req.body;
@@ -273,10 +312,15 @@ const updateMatchEvents = async (req, res) => {
                     message: 'El evento está asignado a un equipo que no está jugando este partido'
                 });
             }
-            const playerBelongsToTeam = await Player.exists({ _id: event.player, team: event.team });
+
+            const isOwnGoalEvent = event.type === 'OWN_GOAL';
+            const playerBelongsToTeam = isOwnGoalEvent
+                ? await Player.exists({ _id: event.player, $or: [{ team: match.homeTeam }, { team: match.awayTeam }] })
+                : await Player.exists({ _id: event.player, team: event.team });
+
             if (!playerBelongsToTeam) {
                 return res.status(400).json({
-                    message: `El jugador ${event.player} no pertenece al equipo asignado`
+                    message: `El jugador ${event.player} no pertenece a los equipos del partido`
                 });
             }
         }
@@ -284,15 +328,14 @@ const updateMatchEvents = async (req, res) => {
         match.events = events;
         await match.save();
 
-        // populate() sobre el doc ya en memoria — evita segunda consulta a la BD
-        await match.populate('homeTeam', 'name shortName logoUrl');
-        await match.populate('awayTeam', 'name shortName logoUrl');
-        await match.populate('goals.player', 'name number');
-        await match.populate('goals.team', 'name shortName');
-        await match.populate('events.player', 'name number');
-        await match.populate('events.team', 'name shortName');
+        await match.populate('homeTeam', TEAM_FIELDS);
+        await match.populate('awayTeam', TEAM_FIELDS);
+        await match.populate('goals.player', PLAYER_FIELDS);
+        await match.populate('goals.team', TEAM_FIELDS);
+        await match.populate('events.player', PLAYER_FIELDS);
+        await match.populate('events.team', TEAM_FIELDS);
 
-        res.status(200).json(match);
+        res.status(200).json(formatMatch(match));
     } catch (error) {
         res.status(400).json({ message: 'Error al registrar los eventos', error: error.message });
     }

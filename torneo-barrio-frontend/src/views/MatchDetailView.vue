@@ -17,7 +17,7 @@ const route = useRoute()
 const router = useRouter()
 const $q = useQuasar()
 const store = useTournamentStore()
-const goalForm = reactive({ team: '', player: '', assistPlayer: '', minute: 1 })
+const goalForm = reactive({ team: '', player: '', assistPlayer: '', minute: 1, isOwnGoal: false })
 const eventForm = reactive({ type: 'ASSIST', team: '', player: '', minute: 1 })
 const goalSaving = reactive({ value: false })
 const eventSaving = reactive({ value: false })
@@ -32,23 +32,30 @@ const teamOptions = computed(() => participantTeams.value.map((team) => ({
   value: getId(team),
 })))
 
+const formatPlayerOption = (player) => {
+  const num = player.number ?? player.dorsal ?? '?'
+  const name = player.name || player.nombre || 'Jugador'
+  return `#${num} ${name}`
+}
+
 const goalPlayerOptions = computed(() => store.players
   .filter((player) => getId(player.team) === goalForm.team)
-  .map((player) => ({ label: `#${player.number} ${player.name}`, value: player._id })))
+  .map((player) => ({ label: formatPlayerOption(player), value: player._id })))
 
 const assistPlayerOptions = computed(() => store.players
   .filter((player) => getId(player.team) === goalForm.team && player._id !== goalForm.player)
-  .map((player) => ({ label: `#${player.number} ${player.name}`, value: player._id })))
+  .map((player) => ({ label: formatPlayerOption(player), value: player._id })))
 
 const eventPlayerOptions = computed(() => store.players
   .filter((player) => getId(player.team) === eventForm.team)
-  .map((player) => ({ label: `#${player.number} ${player.name}`, value: player._id })))
+  .map((player) => ({ label: formatPlayerOption(player), value: player._id })))
 
 const playerName = (value) => {
-  if (value && typeof value === 'object' && value.name) {
-    return value.name
+  if (value && typeof value === 'object') {
+    return value.name || value.nombre || 'Jugador'
   }
-  return store.players.find((player) => player._id === getId(value))?.name || 'Jugador'
+  const found = store.players.find((player) => player._id === getId(value))
+  return found?.name || found?.nombre || 'Jugador'
 }
 
 const teamName = (value) => {
@@ -68,24 +75,33 @@ const timeline = computed(() => {
 
   const buildEvent = (item, type, sourceOrder) => {
     const teamId = getId(item.team)
-    const isOwnGoal = type === 'OWN_GOAL'
+    const isOwnGoal = type === 'OWN_GOAL' || Boolean(item.isOwnGoal)
     return {
       ...item,
-      type,
+      type: isOwnGoal ? 'OWN_GOAL' : type,
       teamId,
       playerId: getId(item.player),
       playerName: playerName(item.player),
       minute: Number(item.minute) || 0,
       label: isOwnGoal ? 'Autogol (Gol en contra)' : eventTypeLabel(type),
       icon: (type === 'GOAL' || isOwnGoal) ? 'sports_soccer' : type === 'ASSIST' ? 'assistant' : type === 'RED_CARD' ? 'cancel' : type === 'YELLOW_CARD' ? 'warning' : 'style',
-      color: type === 'RED_CARD' ? 'negative' : isOwnGoal ? 'negative' : type === 'YELLOW_CARD' ? 'warning' : type === 'GOAL' ? 'positive' : 'info',
+      color: isOwnGoal ? 'negative' : type === 'RED_CARD' ? 'negative' : type === 'YELLOW_CARD' ? 'warning' : type === 'GOAL' ? 'positive' : 'info',
       side: teamId === homeId ? 'home' : teamId === awayId ? 'away' : 'neutral',
       sourceOrder,
     }
   }
 
-  const goals = (match.value.goals || []).map((goal, index) => buildEvent(goal, 'GOAL', index))
-  const events = (match.value.events || []).map((event, index) => buildEvent(event, event.type, goals.length + index))
+  const goals = (match.value.goals || []).map((goal, index) => buildEvent(goal, goal.isOwnGoal ? 'OWN_GOAL' : 'GOAL', index))
+  const events = (match.value.events || [])
+    .filter((event) => {
+      if (event.type === 'OWN_GOAL') {
+        return !(match.value.goals || []).some(
+          (g) => g.isOwnGoal && getId(g.player) === getId(event.player) && Number(g.minute) === Number(event.minute)
+        )
+      }
+      return true
+    })
+    .map((event, index) => buildEvent(event, event.type, goals.length + index))
 
   return [...goals, ...events]
     .sort((first, second) => Number(first.minute) - Number(second.minute) || Number(first.sourceOrder) - Number(second.sourceOrder))
@@ -130,22 +146,57 @@ const registerGoal = async () => {
 
   goalSaving.value = true
   try {
-    const goals = [...apiGoals(), {
-      player: goalForm.player,
-      team: goalForm.team,
-      minute: Number(goalForm.minute),
-      ...(goalForm.assistPlayer ? { assistPlayer: goalForm.assistPlayer } : {}),
-    }]
     const homeTeamId = getId(match.value.homeTeam)
     const awayTeamId = getId(match.value.awayTeam)
+
+    const isOwnGoal = Boolean(goalForm.isOwnGoal)
+    // En autogol, el equipo que comete el error es goalForm.team,
+    // y el gol suma al marcador del equipo rival
+    const scoringTeam = isOwnGoal
+      ? (goalForm.team === homeTeamId ? awayTeamId : homeTeamId)
+      : goalForm.team
+
+    const newGoal = {
+      player: goalForm.player,
+      team: scoringTeam,
+      minute: Number(goalForm.minute),
+      isOwnGoal,
+      ...(goalForm.assistPlayer && !isOwnGoal ? { assistPlayer: goalForm.assistPlayer } : {}),
+    }
+
+    const goals = [...apiGoals(), newGoal]
+
+    // Si es autogol, registramos también la incidencia disciplinaria OWN_GOAL
+    if (isOwnGoal) {
+      const existingEvents = (match.value.events || []).map((event) => ({
+        type: event.type,
+        player: getId(event.player),
+        team: getId(event.team),
+        minute: Number(event.minute),
+      }))
+      const newEvent = {
+        type: 'OWN_GOAL',
+        player: goalForm.player,
+        team: goalForm.team,
+        minute: Number(goalForm.minute),
+      }
+      await store.updateMatchEvents(match.value._id, [...existingEvents, newEvent])
+    }
+
     await store.updateMatchResult(match.value._id, {
       homeScore: scoreFor(homeTeamId, goals),
       awayScore: scoreFor(awayTeamId, goals),
       status: 'IN_PROGRESS',
       goals,
     })
-    $q.notify({ type: 'positive', message: 'Gol registrado y marcador actualizado en vivo.' })
-    Object.assign(goalForm, { team: '', player: '', assistPlayer: '', minute: 1 })
+
+    $q.notify({
+      type: 'positive',
+      message: isOwnGoal
+        ? 'Autogol registrado: el tanto subió al marcador del equipo rival.'
+        : 'Gol registrado y marcador actualizado en vivo.',
+    })
+    Object.assign(goalForm, { team: '', player: '', assistPlayer: '', minute: 1, isOwnGoal: false })
   } catch (error) {
     $q.notify({ type: 'negative', message: getApiErrorMessage(error) })
   } finally {
@@ -158,6 +209,9 @@ const registerEvent = async () => {
 
   eventSaving.value = true
   try {
+    const homeTeamId = getId(match.value.homeTeam)
+    const awayTeamId = getId(match.value.awayTeam)
+
     const existingEvents = (match.value.events || []).map((event) => ({
       type: event.type,
       player: getId(event.player),
@@ -171,8 +225,34 @@ const registerEvent = async () => {
       minute: Number(eventForm.minute),
     }]
     await store.updateMatchEvents(match.value._id, events)
+
+    // Si la incidencia es un autogol, también sumamos el gol al marcador rival
+    if (eventForm.type === 'OWN_GOAL') {
+      const scoringTeam = eventForm.team === homeTeamId ? awayTeamId : homeTeamId
+      const goals = [...apiGoals(), {
+        player: eventForm.player,
+        team: scoringTeam,
+        minute: Number(eventForm.minute),
+        isOwnGoal: true,
+      }]
+      await store.updateMatchResult(match.value._id, {
+        homeScore: scoreFor(homeTeamId, goals),
+        awayScore: scoreFor(awayTeamId, goals),
+        status: 'IN_PROGRESS',
+        goals,
+      })
+      $q.notify({
+        type: 'positive',
+        message: 'Autogol registrado: sumado al marcador del equipo rival.',
+      })
+    } else {
+      $q.notify({
+        type: 'positive',
+        message: `${eventTypeLabel(events.at(-1).type)} registrado correctamente.`,
+      })
+    }
+
     Object.assign(eventForm, { type: 'ASSIST', team: '', player: '', minute: 1 })
-    $q.notify({ type: 'positive', message: `${eventTypeLabel(events.at(-1).type)} registrado correctamente.` })
   } catch (error) {
     $q.notify({ type: 'negative', message: getApiErrorMessage(error) })
   } finally {
@@ -341,12 +421,28 @@ const finishMatch = () => {
               <div class="text-caption text-grey-5 q-mb-md">El marcador se actualiza automáticamente con cada gol validado.</div>
 
               <q-form class="q-gutter-y-md" @submit.prevent="registerGoal">
+                <!-- TOGGLE AUTOGOL -->
+                <div class="row items-center justify-between q-pa-sm rounded-borders" style="background: rgba(239, 68, 68, 0.08); border: 1px dashed rgba(239, 68, 68, 0.35);">
+                  <div class="row items-center gap-xs">
+                    <q-icon name="sports_soccer" :color="goalForm.isOwnGoal ? 'negative' : 'grey-5'" size="20px" />
+                    <div>
+                      <div class="text-caption text-weight-bold" :class="goalForm.isOwnGoal ? 'text-negative' : 'text-white'">
+                        {{ goalForm.isOwnGoal ? '⚽ Marcando Autogol (Gol en contra)' : '¿Es Gol en propia puerta (Autogol)?' }}
+                      </div>
+                      <div class="text-caption text-grey-5" style="font-size: 0.72rem;">
+                        {{ goalForm.isOwnGoal ? 'El gol se sumará automáticamente al equipo rival.' : 'Activa si el jugador anotó en su propia portería.' }}
+                      </div>
+                    </div>
+                  </div>
+                  <q-toggle v-model="goalForm.isOwnGoal" color="negative" dense />
+                </div>
+
                 <q-select
                   v-model="goalForm.team"
                   :options="teamOptions"
                   emit-value
                   map-options
-                  label="Equipo que anota"
+                  :label="goalForm.isOwnGoal ? 'Equipo que cometió el autogol *' : 'Equipo que anota *'"
                   outlined
                   stack-label
                   required
@@ -356,13 +452,14 @@ const finishMatch = () => {
                   :options="goalPlayerOptions"
                   emit-value
                   map-options
-                  label="Goleador (Anotador)"
+                  :label="goalForm.isOwnGoal ? 'Jugador que anotó en contra *' : 'Goleador (Anotador) *'"
                   outlined
                   stack-label
                   required
                   :disable="!goalForm.team"
                 />
                 <q-select
+                  v-if="!goalForm.isOwnGoal"
                   v-model="goalForm.assistPlayer"
                   :options="assistPlayerOptions"
                   emit-value
@@ -385,9 +482,9 @@ const finishMatch = () => {
                 />
                 <q-btn
                   type="submit"
-                  color="primary"
+                  :color="goalForm.isOwnGoal ? 'negative' : 'primary'"
                   icon="sports_soccer"
-                  label="Guardar Gol"
+                  :label="goalForm.isOwnGoal ? 'Guardar Autogol' : 'Guardar Gol'"
                   class="full-width q-py-sm"
                   :loading="goalSaving.value"
                   :disable="!goalForm.team || !goalForm.player"

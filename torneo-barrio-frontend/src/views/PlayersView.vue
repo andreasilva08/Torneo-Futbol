@@ -13,6 +13,7 @@ const router = useRouter()
 const search = ref('')
 const teamFilter = ref('ALL')
 const positionFilter = ref('ALL')
+const statusFilter = ref('ALL')
 const dialog = ref(false)
 const editingId = ref(null)
 const saving = ref(false)
@@ -23,11 +24,99 @@ const imageUrlRules = [
   (value) => isOptionalImageUrl(value) || 'Si la URL no es válida, se usará la imagen por defecto.',
 ]
 
+// Opciones de condición / estado del jugador
+const condicionOptions = [
+  {
+    label: 'Titular',
+    value: 'TITULAR',
+    icon: 'check_circle',
+    color: 'positive',
+    desc: 'Disponible para alineación inicial',
+  },
+  {
+    label: 'Suplente',
+    value: 'SUPLENTE',
+    icon: 'swap_horiz',
+    color: 'info',
+    desc: 'Banquillo de suplentes',
+  },
+  {
+    label: 'Lesionado',
+    value: 'LESIONADO',
+    icon: 'medical_services',
+    color: 'warning',
+    desc: 'Baja médica / En recuperación',
+  },
+  {
+    label: 'Sancionado (Roja Directa)',
+    value: 'SANCIONADO_ROJA',
+    icon: 'report',
+    color: 'negative',
+    desc: 'Suspendido por tarjeta roja directa',
+  },
+  {
+    label: 'Sancionado (Acumulación)',
+    value: 'SANCIONADO_AMARILLAS',
+    icon: 'warning',
+    color: 'amber-9',
+    desc: 'Suspendido por acumulación de amarillas',
+  },
+]
+
+// Metadatos visuales por cada condición
+const getCondicionMeta = (val) => {
+  const normalized = String(val || 'TITULAR').toUpperCase()
+  if (normalized.includes('ROJA') || normalized === 'EXPULSADO') {
+    return {
+      label: 'SANCIONADO (ROJA)',
+      icon: 'report',
+      bg: 'rgba(239, 68, 68, 0.18)',
+      border: 'rgba(239, 68, 68, 0.45)',
+      text: '#f87171',
+    }
+  }
+  if (normalized.includes('AMARILLA') || normalized.includes('AMARILLAS')) {
+    return {
+      label: 'SANCIONADO (AMARILLAS)',
+      icon: 'warning',
+      bg: 'rgba(245, 158, 11, 0.18)',
+      border: 'rgba(245, 158, 11, 0.45)',
+      text: '#fbbf24',
+    }
+  }
+  if (normalized.includes('LESION') || normalized.includes('LESIONADO')) {
+    return {
+      label: 'LESIONADO',
+      icon: 'medical_services',
+      bg: 'rgba(251, 146, 60, 0.18)',
+      border: 'rgba(251, 146, 60, 0.45)',
+      text: '#fb923c',
+    }
+  }
+  if (normalized.includes('SUPLENTE') || normalized === 'BANCA') {
+    return {
+      label: 'SUPLENTE',
+      icon: 'swap_horiz',
+      bg: 'rgba(56, 189, 248, 0.18)',
+      border: 'rgba(56, 189, 248, 0.45)',
+      text: '#38bdf8',
+    }
+  }
+  return {
+    label: 'TITULAR',
+    icon: 'check_circle',
+    bg: 'rgba(16, 185, 129, 0.18)',
+    border: 'rgba(16, 185, 129, 0.45)',
+    text: '#10b981',
+  }
+}
+
 const form = reactive({
   name: '',
   number: null,
   position: 'Delantero',
   team: '',
+  status: 'TITULAR',
   photoUrl: '',
 })
 
@@ -40,11 +129,20 @@ const teamFilterOptions = computed(() => [
 ])
 
 const positionFilterOptions = [
-  { label: '🎷 Todas las posiciones', value: 'ALL' },
+  { label: '⚽ Todas las posiciones', value: 'ALL' },
   { label: '🧤 Portero', value: 'Portero' },
   { label: '🛡 Defensa', value: 'Defensa' },
   { label: '⚙ Mediocampista', value: 'Mediocampista' },
   { label: '⚡ Delantero', value: 'Delantero' },
+]
+
+const statusFilterOptions = [
+  { label: '📋 Todas las condiciones', value: 'ALL' },
+  { label: '🟢 Titular', value: 'TITULAR' },
+  { label: '🔵 Suplente', value: 'SUPLENTE' },
+  { label: '🏥 Lesionado', value: 'LESIONADO' },
+  { label: '🟥 Sancionado (Roja Directa)', value: 'SANCIONADO_ROJA' },
+  { label: '🟨 Sancionado (Acumulación)', value: 'SANCIONADO_AMARILLAS' },
 ]
 
 const positionIcon = (position) => {
@@ -70,7 +168,7 @@ const occupiedNumbersByTeam = computed(() => {
         const playerTeamId = typeof player.team === 'object' ? player.team?._id : player.team
         return playerTeamId === teamId && (!editingId.value || player._id !== editingId.value)
       })
-      .map((player) => Number(player.number))
+      .map((player) => Number(player.number ?? player.dorsal))
       .filter((value) => Number.isInteger(value))
   )
 })
@@ -86,11 +184,23 @@ const filteredPlayers = computed(() => {
 
   return store.players.filter((player) => {
     const playerTeamId = typeof player.team === 'object' ? player.team?._id : player.team
-    const matchesSearch = !query || `${player.name} ${player.position} ${player.team?.name || ''}`.toLowerCase().includes(query)
-    const matchesTeam = teamFilter.value === 'ALL' || playerTeamId === teamFilter.value
-    const matchesPos = positionFilter.value === 'ALL' || player.position === positionFilter.value
+    const teamNameStr = player.team?.name || player.equipo || ''
+    const playerNameStr = player.name || player.nombre || ''
+    const playerPosStr = player.position || player.posicion || ''
+    const playerCond = (player.status || player.condicion || 'TITULAR').toUpperCase()
 
-    return matchesSearch && matchesTeam && matchesPos
+    const matchesSearch = !query || `${playerNameStr} ${playerPosStr} ${teamNameStr}`.toLowerCase().includes(query)
+    const matchesTeam = teamFilter.value === 'ALL' || playerTeamId === teamFilter.value || player.equipo === teamFilter.value
+    const matchesPos = positionFilter.value === 'ALL' || playerPosStr === positionFilter.value
+
+    let matchesStatus = true
+    if (statusFilter.value !== 'ALL') {
+      const meta = getCondicionMeta(playerCond)
+      const targetMeta = getCondicionMeta(statusFilter.value)
+      matchesStatus = meta.label === targetMeta.label
+    }
+
+    return matchesSearch && matchesTeam && matchesPos && matchesStatus
   })
 })
 
@@ -100,6 +210,7 @@ const resetForm = () => {
     number: null,
     position: 'Delantero',
     team: '',
+    status: 'TITULAR',
     photoUrl: '',
   })
   editingId.value = null
@@ -115,10 +226,11 @@ const openCreateDialog = () => {
 
 const openEditDialog = (player) => {
   Object.assign(form, {
-    name: player.name,
-    number: player.number,
-    position: player.position,
+    name: player.name || player.nombre || '',
+    number: player.number ?? player.dorsal ?? null,
+    position: player.position || player.posicion || 'Delantero',
     team: player.team?._id || player.team || '',
+    status: player.status || player.condicion || 'TITULAR',
     photoUrl: player.photoUrl || '',
   })
   editingId.value = player._id
@@ -145,28 +257,33 @@ const savePlayer = async () => {
 
   if (!Number.isInteger(nextNumber) || nextNumber < 1 || nextNumber > 99) {
     $q.notify({ type: 'warning', message: 'El número de camiseta debe estar entre 1 y 99.' })
+    saving.value = false
     return
   }
 
   if (occupiedNumbersByTeam.value.has(nextNumber)) {
     $q.notify({ type: 'warning', message: 'Ese número ya está asignado a otro jugador de este equipo.' })
+    saving.value = false
     return
   }
 
   const payload = {
     ...form,
+    name: form.name.trim(),
+    nombre: form.name.trim(),
     number: nextNumber,
+    dorsal: nextNumber,
+    position: form.position,
+    posicion: form.position,
+    status: form.status,
+    condicion: form.status,
     photoUrl: form.photoUrl.trim(),
   }
 
   try {
-    const savedPlayer = editingId.value
-      ? await store.updatePlayer(editingId.value, payload)
-      : await store.createPlayer(payload)
-
-    if (savedPlayer.photoUrl !== payload.photoUrl) {
-      throw new Error('La API no confirmó la URL de la fotografía. Revisa la respuesta del servidor.')
-    }
+    await (editingId.value
+      ? store.updatePlayer(editingId.value, payload)
+      : store.createPlayer(payload))
 
     closeDialog()
     $q.notify({ type: 'positive', message: 'Jugador guardado correctamente.' })
@@ -257,7 +374,7 @@ onMounted(async () => {
     <div class="sports-toolbar q-mb-xl">
       <div class="row q-col-gutter-md items-center">
         <!-- FILTER BY TEAM -->
-        <div class="col-12 col-md-4">
+        <div class="col-12 col-sm-6 col-md-3">
           <q-select
             v-model="teamFilter"
             :options="teamFilterOptions"
@@ -274,7 +391,7 @@ onMounted(async () => {
         </div>
 
         <!-- FILTER BY POSITION -->
-        <div class="col-12 col-md-4">
+        <div class="col-12 col-sm-6 col-md-3">
           <q-select
             v-model="positionFilter"
             :options="positionFilterOptions"
@@ -290,8 +407,25 @@ onMounted(async () => {
           </q-select>
         </div>
 
+        <!-- FILTER BY CONDITION (TITULAR, SUPLENTE, LESIONADO, SANCIONADO) -->
+        <div class="col-12 col-sm-6 col-md-3">
+          <q-select
+            v-model="statusFilter"
+            :options="statusFilterOptions"
+            emit-value
+            map-options
+            outlined
+            dense
+            label="Condición / Estado"
+          >
+            <template #prepend>
+              <q-icon name="verified_user" color="accent" />
+            </template>
+          </q-select>
+        </div>
+
         <!-- SEARCH BY NAME -->
-        <div class="col-12 col-md-4">
+        <div class="col-12 col-sm-6 col-md-3">
           <q-input
             v-model="search"
             dense
@@ -312,11 +446,11 @@ onMounted(async () => {
       <q-table
         :rows="filteredPlayers"
         :columns="[
-          { name: 'number', label: 'DORSAL', field: 'number', align: 'center', sortable: true },
-          { name: 'player', label: 'JUGADOR', field: 'name', align: 'left', sortable: true },
-          { name: 'position', label: 'POSICIÓN', field: 'position', align: 'left', sortable: true },
-          { name: 'team', label: 'EQUIPO', field: 'team', align: 'left', sortable: true },
-          { name: 'status', label: 'CONDICIÓN', field: 'status', align: 'center' },
+          { name: 'number', label: 'DORSAL', field: (row) => row.number ?? row.dorsal, align: 'center', sortable: true },
+          { name: 'player', label: 'JUGADOR', field: (row) => row.name || row.nombre, align: 'left', sortable: true },
+          { name: 'position', label: 'POSICIÓN', field: (row) => row.position || row.posicion, align: 'left', sortable: true },
+          { name: 'team', label: 'EQUIPO', field: (row) => row.team?.name || row.equipo, align: 'left', sortable: true },
+          { name: 'status', label: 'CONDICIÓN', field: (row) => row.status || row.condicion, align: 'center', sortable: true },
           { name: 'actions', label: 'ACCIONES', field: 'actions', align: 'right' },
         ]"
         row-key="_id"
@@ -328,7 +462,7 @@ onMounted(async () => {
         <template #body-cell-number="props">
           <q-td :props="props" class="text-center">
             <span class="dorsal-blue-box">
-              {{ props.row.number }}
+              {{ props.row.number ?? props.row.dorsal ?? '-' }}
             </span>
           </q-td>
         </template>
@@ -341,12 +475,12 @@ onMounted(async () => {
                 <ImagePreview
                   :src="props.row.photoUrl"
                   fallback="/images/default-player.svg"
-                  :alt="`Foto de ${props.row.name}`"
+                  :alt="`Foto de ${props.row.name || props.row.nombre}`"
                   width="36px"
                   height="36px"
                 />
               </div>
-              <div class="player-name-bold">{{ props.row.name }}</div>
+              <div class="player-name-bold">{{ props.row.name || props.row.nombre }}</div>
             </div>
           </q-td>
         </template>
@@ -355,8 +489,8 @@ onMounted(async () => {
         <template #body-cell-position="props">
           <q-td :props="props">
             <div class="position-neon-tag">
-              <q-icon :name="positionIcon(props.row.position)" size="15px" class="q-mr-xs" />
-              <span>{{ props.row.position }}</span>
+              <q-icon :name="positionIcon(props.row.position || props.row.posicion)" size="15px" class="q-mr-xs" />
+              <span>{{ props.row.position || props.row.posicion }}</span>
             </div>
           </q-td>
         </template>
@@ -369,21 +503,29 @@ onMounted(async () => {
                 <ImagePreview
                   :src="props.row.team?.logoUrl"
                   fallback="/images/default-team.svg"
-                  :alt="props.row.team?.name || 'Equipo'"
+                  :alt="props.row.team?.name || props.row.equipo || 'Equipo'"
                   width="20px"
                   height="20px"
                 />
               </div>
-              <span class="team-pill-name">{{ props.row.team?.name || 'sin equipo' }}</span>
+              <span class="team-pill-name">{{ props.row.team?.name || props.row.equipo || 'Sin equipo' }}</span>
             </div>
           </q-td>
         </template>
 
-        <!-- CONDICION (NEON TITULAR CHIP) -->
+        <!-- CONDICIÓN (CHIP DINÁMICO ADAPTADO A ATLAS: TITULAR, SUPLENTE, LESIONADO, SANCIONADO) -->
         <template #body-cell-status="props">
           <q-td :props="props" class="text-center">
-            <span class="condicion-neon-chip">
-              TITULAR
+            <span
+              class="condicion-dynamic-chip"
+              :style="{
+                background: getCondicionMeta(props.row.status || props.row.condicion).bg,
+                borderColor: getCondicionMeta(props.row.status || props.row.condicion).border,
+                color: getCondicionMeta(props.row.status || props.row.condicion).text,
+              }"
+            >
+              <q-icon :name="getCondicionMeta(props.row.status || props.row.condicion).icon" size="13px" class="q-mr-xs" />
+              {{ getCondicionMeta(props.row.status || props.row.condicion).label }}
             </span>
           </q-td>
         </template>
@@ -409,7 +551,7 @@ onMounted(async () => {
               dense
               icon="delete"
               color="negative"
-              @click="removePlayer(props.row._id, props.row.name)"
+              @click="removePlayer(props.row._id, props.row.name || props.row.nombre)"
               aria-label="Eliminar jugador"
             >
               <q-tooltip>Eliminar Jugador</q-tooltip>
@@ -425,7 +567,7 @@ onMounted(async () => {
 
     <!-- CREATE/EDIT PLAYER MODAL DIALOG -->
     <q-dialog v-model="dialog" persistent>
-      <q-card style="max-width: 640px; width: 94vw;">
+      <q-card style="max-width: 680px; width: 94vw;">
         <!-- DIALOG HEADER -->
         <q-card-section class="dialog-header-section">
           <div class="row items-center justify-between">
@@ -482,6 +624,27 @@ onMounted(async () => {
             </div>
           </div>
 
+          <!-- CONDICIÓN / ESTADO SELECTOR (TITULAR, SUPLENTE, LESIONADO, SANCIONADO) -->
+          <div>
+            <div class="text-subtitle2 text-weight-bold q-mb-xs text-white">Condición / Estado en el Plantel</div>
+            <div class="selector-grid condicion-selector-grid">
+              <button
+                v-for="cond in condicionOptions"
+                :key="cond.value"
+                type="button"
+                class="selector-card cond-select-card"
+                :class="{ 'selector-card--selected': form.status === cond.value }"
+                @click="form.status = cond.value"
+              >
+                <q-icon :name="cond.icon" size="18px" :color="form.status === cond.value ? 'dark' : cond.color" />
+                <div class="text-left">
+                  <div class="cond-title">{{ cond.label }}</div>
+                  <div class="cond-desc">{{ cond.desc }}</div>
+                </div>
+              </button>
+            </div>
+          </div>
+
           <!-- JERSEY NUMBER SELECTOR -->
           <div>
             <div class="row items-center justify-between q-mb-xs">
@@ -519,28 +682,15 @@ onMounted(async () => {
             hint="Enlace directo a una imagen accesible."
           />
 
-          <div class="row justify-center q-my-sm">
-            <div class="sport-crest-container" style="width: 80px; height: 80px;">
-              <ImagePreview
-                :src="form.photoUrl"
-                fallback="/images/default-player.svg"
-                :alt="form.name ? `Foto de ${form.name}` : 'Foto de jugador'"
-                width="72px"
-                height="72px"
-                show-status
-              />
-            </div>
-          </div>
-
-          <!-- ACTIONS -->
-          <div class="row justify-end q-gutter-sm q-pt-md">
+          <!-- FORM ACTIONS -->
+          <div class="row justify-end gap-sm q-pt-md">
             <q-btn flat label="Cancelar" color="grey-5" @click="closeDialog" />
             <q-btn
-              type="submit"
-              label="Guardar Jugador"
+              unelevated
               color="primary"
+              :label="editingId ? 'Guardar Cambios' : 'Registrar Jugador'"
+              type="submit"
               :loading="saving"
-              :disable="saving || !form.team || !form.number"
             />
           </div>
         </q-form>
@@ -551,47 +701,93 @@ onMounted(async () => {
 
 <style scoped>
 .players-page {
-  animation: fadeIn 0.3s ease;
+  animation: fadeIn 0.25s ease;
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Page Header Styles */
+.sport-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.sport-page-header__left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.sport-page-header__icon-box {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--tb-radius-md);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(56, 189, 248, 0.2) 100%);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #10b981;
+  font-size: 26px;
+}
+
+.sport-page-header__eyebrow {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #10b981;
+  margin-bottom: 2px;
+}
+
+.sport-page-header__title {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+}
+
+/* Toolbar Filter Box */
 .sports-toolbar {
   background: var(--tb-surface);
   border: 1px solid var(--tb-border);
   border-radius: var(--tb-radius-md);
-  padding: 16px 20px;
+  padding: 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 }
 
-.sports-panel-card {
-  background: var(--tb-surface) !important;
-  border: 1px solid var(--tb-border) !important;
-  border-radius: var(--tb-radius-md) !important;
-  overflow: hidden;
+/* Players Pill Table */
+.players-pill-table {
+  background: transparent !important;
 }
 
-.players-pill-table :deep(thead th) {
-  background: var(--tb-surface-raised) !important;
-  color: var(--tb-muted) !important;
-  font-size: 0.8rem !important;
-  font-weight: 800 !important;
-  letter-spacing: 0.08em !important;
-  padding: 14px 16px !important;
+.players-pill-table :deep(thead tr th) {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  border-bottom: 1px solid var(--tb-border);
+  padding: 14px 16px;
 }
 
 .players-pill-table :deep(tbody tr) {
-  height: 66px;
-}
-
-.players-pill-table :deep(tbody tr:nth-child(even)) {
-  background: rgba(30, 41, 59, 0.4) !important;
+  transition: all 0.15s ease;
 }
 
 .players-pill-table :deep(tbody tr:hover) {
-  background: rgba(16, 185, 129, 0.08) !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+
+.players-pill-table :deep(tbody tr td) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 12px 16px;
 }
 
 /* Dorsal Blue Box */
@@ -599,24 +795,28 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-  color: #ffffff;
-  font-size: 1.05rem;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 6px;
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+  font-size: 0.92rem;
   font-weight: 900;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+  border-radius: 6px;
 }
 
+/* Player Avatar and Name */
 .player-avatar-pill {
-  width: 40px;
-  height: 40px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--tb-border);
   flex-shrink: 0;
 }
 
 .player-name-bold {
-  font-size: 1rem;
+  font-size: 0.95rem;
   font-weight: 800;
   color: #ffffff;
 }
@@ -653,24 +853,35 @@ onMounted(async () => {
   color: #ffffff;
 }
 
-/* Condicion Neon Chip */
-.condicion-neon-chip {
+/* Condicion Dynamic Chip */
+.condicion-dynamic-chip {
   display: inline-flex;
   align-items: center;
-  background: rgba(34, 197, 94, 0.18);
-  border: 1px solid rgba(34, 197, 94, 0.45);
-  color: #22c55e;
   font-size: 0.74rem;
   font-weight: 900;
-  letter-spacing: 0.06em;
-  padding: 4px 12px;
+  letter-spacing: 0.05em;
+  padding: 4px 10px;
   border-radius: 6px;
+  border-width: 1px;
+  border-style: solid;
 }
 
 /* Modal Form Styles */
 .dialog-header-section {
   border-bottom: 1px solid var(--tb-border);
   padding: 18px 22px;
+}
+
+.header-logo-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #10b981;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .selector-grid {
@@ -684,6 +895,10 @@ onMounted(async () => {
 
 .position-selector-grid {
   grid-template-columns: repeat(4, 1fr);
+}
+
+.condicion-selector-grid {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
 }
 
 .selector-card {
@@ -731,12 +946,31 @@ onMounted(async () => {
   padding: 10px 8px;
 }
 
+.cond-select-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.cond-title {
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.cond-desc {
+  font-size: 0.68rem;
+  opacity: 0.75;
+  font-weight: 500;
+}
+
 /* Number selector scroll */
 .number-selector-scroll {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
   gap: 6px;
-  max-height: 160px;
+  max-height: 150px;
   overflow-y: auto;
   padding: 6px;
   background: var(--tb-surface-raised);

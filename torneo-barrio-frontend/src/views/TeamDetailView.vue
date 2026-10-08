@@ -31,6 +31,23 @@ const positionBadgeClass = (position) => {
   if (position === 'Delantero') return 'pos-chip pos-chip--fwd'
   return 'pos-chip pos-chip--mid'
 }
+
+const getCondicionMeta = (val) => {
+  const normalized = String(val || 'TITULAR').toUpperCase()
+  if (normalized.includes('ROJA') || normalized === 'EXPULSADO') {
+    return { label: 'SANCIONADO (ROJA)', bg: 'rgba(239, 68, 68, 0.18)', border: 'rgba(239, 68, 68, 0.45)', text: '#f87171' }
+  }
+  if (normalized.includes('AMARILLA') || normalized.includes('AMARILLAS')) {
+    return { label: 'SANCIONADO (AMARILLAS)', bg: 'rgba(245, 158, 11, 0.18)', border: 'rgba(245, 158, 11, 0.45)', text: '#fbbf24' }
+  }
+  if (normalized.includes('LESION') || normalized.includes('LESIONADO')) {
+    return { label: 'LESIONADO', bg: 'rgba(251, 146, 60, 0.18)', border: 'rgba(251, 146, 60, 0.45)', text: '#fb923c' }
+  }
+  if (normalized.includes('SUPLENTE') || normalized === 'BANCA') {
+    return { label: 'SUPLENTE', bg: 'rgba(56, 189, 248, 0.18)', border: 'rgba(56, 189, 248, 0.45)', text: '#38bdf8' }
+  }
+  return { label: 'TITULAR', bg: 'rgba(16, 185, 129, 0.18)', border: 'rgba(16, 185, 129, 0.45)', text: '#10b981' }
+}
 </script>
 
 <template>
@@ -119,10 +136,10 @@ const positionBadgeClass = (position) => {
           <q-table
             :rows="players"
             :columns="[
-              { name: 'player', label: 'JUGADOR', field: 'name', align: 'left', sortable: true },
-              { name: 'number', label: 'DORSAL', field: 'number', align: 'center', sortable: true },
-              { name: 'position', label: 'POSICIÓN', field: 'position', align: 'center', sortable: true },
-              { name: 'status', label: 'ESTADO', field: 'status', align: 'center' },
+              { name: 'player', label: 'JUGADOR', field: (row) => row.name || row.nombre, align: 'left', sortable: true },
+              { name: 'number', label: 'DORSAL', field: (row) => row.number ?? row.dorsal, align: 'center', sortable: true },
+              { name: 'position', label: 'POSICIÓN', field: (row) => row.position || row.posicion, align: 'center', sortable: true },
+              { name: 'status', label: 'CONDICIÓN', field: (row) => row.status || row.condicion, align: 'center' },
             ]"
             row-key="_id"
             flat
@@ -137,12 +154,12 @@ const positionBadgeClass = (position) => {
                     <ImagePreview
                       :src="props.row.photoUrl"
                       fallback="/images/default-player.svg"
-                      :alt="`Fotografía de ${props.row.name}`"
+                      :alt="`Fotografía de ${props.row.name || props.row.nombre}`"
                       width="32px"
                       height="32px"
                     />
                   </div>
-                  <span class="text-weight-bold text-white">{{ props.row.name }}</span>
+                  <span class="text-weight-bold text-white">{{ props.row.name || props.row.nombre }}</span>
                 </div>
               </q-td>
             </template>
@@ -151,7 +168,7 @@ const positionBadgeClass = (position) => {
             <template #body-cell-number="props">
               <q-td :props="props" class="text-center">
                 <span class="jersey-badge">
-                  #{{ props.row.number }}
+                  #{{ props.row.number ?? props.row.dorsal ?? '-' }}
                 </span>
               </q-td>
             </template>
@@ -159,8 +176,8 @@ const positionBadgeClass = (position) => {
             <!-- POSITION -->
             <template #body-cell-position="props">
               <q-td :props="props" class="text-center">
-                <span :class="positionBadgeClass(props.row.position)">
-                  {{ props.row.position }}
+                <span :class="positionBadgeClass(props.row.position || props.row.posicion)">
+                  {{ props.row.position || props.row.posicion }}
                 </span>
               </q-td>
             </template>
@@ -168,8 +185,15 @@ const positionBadgeClass = (position) => {
             <!-- STATUS -->
             <template #body-cell-status="props">
               <q-td :props="props" class="text-center">
-                <span class="status-titular-chip">
-                  HABILITADO
+                <span
+                  class="status-titular-chip"
+                  :style="{
+                    background: getCondicionMeta(props.row.status || props.row.condicion).bg,
+                    borderColor: getCondicionMeta(props.row.status || props.row.condicion).border,
+                    color: getCondicionMeta(props.row.status || props.row.condicion).text,
+                  }"
+                >
+                  {{ getCondicionMeta(props.row.status || props.row.condicion).label }}
                 </span>
               </q-td>
             </template>

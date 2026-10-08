@@ -184,13 +184,35 @@ export const useTournamentStore = defineStore('tournament', {
       }
     },
 
-    async fetchTeamDetail(teamId) {
+async fetchTeamDetail(teamId) {
       this.loading = true
       this.error = null
 
       try {
-        const { data } = await api.get(`/teams/${teamId}/players`)
-        this.teamDetail = data
+        // 1. Obtener los datos básicos del equipo
+        const teamResponse = await api.get(`/teams/${teamId}`)
+        const team = teamResponse.data
+
+        // 2. Si no tenemos la lista general de jugadores cargada en la store, la solicitamos
+        if (!this.players || this.players.length === 0) {
+          await this.fetchPlayers()
+        }
+
+        // 3. Filtrar los jugadores de la store que pertenezcan a este equipo (comparando por nombre o id)
+        const teamPlayers = (this.players || []).filter(player => {
+          return (
+            player.equipo === team.nombre || 
+            player.team === team.nombre ||
+            player.teamId === team._id ||
+            player.team === team._id
+          )
+        })
+
+        // 4. Armar el objeto estructurado para la vista
+        this.teamDetail = {
+          team: team,
+          players: teamPlayers
+        }
       } catch (error) {
         this.error = getErrorMessage(error)
         this.teamDetail = null

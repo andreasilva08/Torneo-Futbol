@@ -22,6 +22,10 @@ const goalSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Player',
       default: null
+    },
+    isOwnGoal: {
+      type: Boolean,
+      default: false
     }
   },
   { _id: false }

@@ -5,6 +5,8 @@ const Team = require('../models/Team');
 const getTopScorersAgg = async () => {
   return Match.aggregate([
     { $unwind: '$goals' },
+    // Excluir autogoles de la tabla de máximos artilleros
+    { $match: { 'goals.isOwnGoal': { $ne: true } } },
     {
       $group: {
         _id: '$goals.player',

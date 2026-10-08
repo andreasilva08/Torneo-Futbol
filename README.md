@@ -150,7 +150,7 @@ Torneo-Futbol-main/
 
 3. Crea o verifica el archivo `.env`:
    ```env
-   PORT=5000
+   PORT=5001
    MONGO_URI=mongodb+srv://torneoUser:juank123456@cluster1.p7qdqgc.mongodb.net/?appName=Cluster1
    CORS_ORIGIN=http://localhost:5173,http://localhost:4173
    ```
@@ -161,7 +161,7 @@ Torneo-Futbol-main/
    # o bien: npm start
    ```
 
-   El servidor quedará disponible en: `http://localhost:5000`.
+   El servidor quedará disponible en: `http://localhost:5001`.
 
 ---
 
@@ -179,7 +179,7 @@ Torneo-Futbol-main/
 
 3. (Opcional) Si requieres cambiar la URL del backend, crea un archivo `.env`:
    ```env
-   VITE_API_URL=http://localhost:5000/api
+   VITE_API_URL=http://localhost:5001/api
    ```
 
 4. Inicia el servidor de desarrollo de Vite:
