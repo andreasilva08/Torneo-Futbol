@@ -24,6 +24,35 @@ const teamSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: 'Cancha Local'
+    },
+    coach: {
+      type: String,
+      trim: true,
+      default: ''
+    },
+    neighborhood: {
+      type: String,
+      trim: true,
+      default: ''
+    },
+    foundationYear: {
+      type: Number,
+      default: 2026
+    },
+    primaryColor: {
+      type: String,
+      trim: true,
+      default: '#15803d'
+    },
+    secondaryColor: {
+      type: String,
+      trim: true,
+      default: '#facc15'
+    },
+    description: {
+      type: String,
+      trim: true,
+      default: ''
     }
   },
   {

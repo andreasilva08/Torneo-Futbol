@@ -24,17 +24,22 @@ const eventSaving = reactive({ value: false })
 
 const match = computed(() => store.matchDetail)
 const isFinished = computed(() => normalizeMatchStatus(match.value?.status) === 'FINISHED')
+const isLive = computed(() => normalizeMatchStatus(match.value?.status) === 'IN_PROGRESS')
 const participantTeams = computed(() => [match.value?.homeTeam, match.value?.awayTeam].filter(Boolean))
+
 const teamOptions = computed(() => participantTeams.value.map((team) => ({
   label: team.name || store.teams.find((item) => item._id === getId(team))?.name || 'Equipo',
   value: getId(team),
 })))
+
 const goalPlayerOptions = computed(() => store.players
   .filter((player) => getId(player.team) === goalForm.team)
   .map((player) => ({ label: `#${player.number} ${player.name}`, value: player._id })))
+
 const assistPlayerOptions = computed(() => store.players
   .filter((player) => getId(player.team) === goalForm.team && player._id !== goalForm.player)
   .map((player) => ({ label: `#${player.number} ${player.name}`, value: player._id })))
+
 const eventPlayerOptions = computed(() => store.players
   .filter((player) => getId(player.team) === eventForm.team)
   .map((player) => ({ label: `#${player.number} ${player.name}`, value: player._id })))
@@ -63,6 +68,7 @@ const timeline = computed(() => {
 
   const buildEvent = (item, type, sourceOrder) => {
     const teamId = getId(item.team)
+    const isOwnGoal = type === 'OWN_GOAL'
     return {
       ...item,
       type,
@@ -70,9 +76,9 @@ const timeline = computed(() => {
       playerId: getId(item.player),
       playerName: playerName(item.player),
       minute: Number(item.minute) || 0,
-      label: eventTypeLabel(type),
-      icon: type === 'GOAL' ? 'sports_soccer' : type === 'ASSIST' ? 'assistant' : type === 'RED_CARD' ? 'cancel' : type === 'YELLOW_CARD' ? 'warning' : 'style',
-      color: type === 'RED_CARD' ? 'negative' : type === 'YELLOW_CARD' ? 'warning' : 'primary',
+      label: isOwnGoal ? 'Autogol (Gol en contra)' : eventTypeLabel(type),
+      icon: (type === 'GOAL' || isOwnGoal) ? 'sports_soccer' : type === 'ASSIST' ? 'assistant' : type === 'RED_CARD' ? 'cancel' : type === 'YELLOW_CARD' ? 'warning' : 'style',
+      color: type === 'RED_CARD' ? 'negative' : isOwnGoal ? 'negative' : type === 'YELLOW_CARD' ? 'warning' : type === 'GOAL' ? 'positive' : 'info',
       side: teamId === homeId ? 'home' : teamId === awayId ? 'away' : 'neutral',
       sourceOrder,
     }
@@ -120,9 +126,7 @@ const apiGoals = () => (match.value?.goals || []).map((goal) => ({
 const scoreFor = (teamId, goals) => goals.filter((goal) => goal.team === teamId).length
 
 const registerGoal = async () => {
-  if (!match.value || isFinished.value) {
-    return
-  }
+  if (!match.value || isFinished.value) return
 
   goalSaving.value = true
   try {
@@ -140,7 +144,7 @@ const registerGoal = async () => {
       status: 'IN_PROGRESS',
       goals,
     })
-    $q.notify({ type: 'positive', message: 'Gol registrado y marcador actualizado.' })
+    $q.notify({ type: 'positive', message: 'Gol registrado y marcador actualizado en vivo.' })
     Object.assign(goalForm, { team: '', player: '', assistPlayer: '', minute: 1 })
   } catch (error) {
     $q.notify({ type: 'negative', message: getApiErrorMessage(error) })
@@ -150,9 +154,7 @@ const registerGoal = async () => {
 }
 
 const registerEvent = async () => {
-  if (!match.value || isFinished.value) {
-    return
-  }
+  if (!match.value || isFinished.value) return
 
   eventSaving.value = true
   try {
@@ -180,10 +182,19 @@ const registerEvent = async () => {
 
 const finishMatch = () => {
   $q.dialog({
-    title: 'Finalizar partido',
-    message: 'El encuentro quedará marcado como finalizado. Esta operación no se puede deshacer desde el frontend.',
+    title: 'Finalizar Encuentro',
+    message: '¿Confirmas la finalización del partido? El resultado quedará registrado como definitivo.',
     cancel: true,
     persistent: true,
+    ok: {
+      label: 'Sí, Finalizar',
+      color: 'negative',
+    },
+    cancel: {
+      label: 'Cancelar',
+      color: 'grey-5',
+      flat: true,
+    },
   }).onOk(async () => {
     try {
       const goals = apiGoals()
@@ -193,7 +204,7 @@ const finishMatch = () => {
         status: 'FINISHED',
         goals,
       })
-      $q.notify({ type: 'positive', message: 'Partido finalizado correctamente.' })
+      $q.notify({ type: 'positive', message: 'Partido finalizado con éxito.' })
     } catch (error) {
       $q.notify({ type: 'negative', message: getApiErrorMessage(error) })
     }
@@ -202,92 +213,142 @@ const finishMatch = () => {
 </script>
 
 <template>
-  <div>
-    <div class="row items-center q-mb-lg">
-      <q-btn flat round icon="arrow_back" aria-label="Volver a partidos" @click="router.push('/partidos')" />
-      <div class="q-ml-sm">
-        <p class="text-caption text-uppercase text-grey-7 q-mb-xs">Encuentro</p>
-        <h1 class="text-h4 text-weight-bold q-ma-none">Detalle del partido</h1>
+  <div class="match-detail-page">
+    <!-- PAGE HEADER -->
+    <div class="sport-page-header">
+      <div class="sport-page-header__left">
+        <q-btn flat round icon="arrow_back" color="grey-4" @click="router.push('/partidos')" class="q-mr-xs" />
+        <div class="sport-page-header__icon-box">
+          <q-icon name="sports" />
+        </div>
+        <div>
+          <div class="sport-page-header__eyebrow">DETALLE DEL PARTIDO OFICIAL</div>
+          <h1 class="sport-page-header__title">
+            {{ match ? `${teamName(match.homeTeam)} vs ${teamName(match.awayTeam)}` : 'Partido' }}
+          </h1>
+        </div>
       </div>
     </div>
 
-    <q-banner v-if="store.matchError" rounded class="bg-negative text-white">
+    <!-- ERROR BANNER -->
+    <q-banner v-if="store.matchError" rounded class="bg-negative text-white q-mb-md">
       {{ store.matchError }}
     </q-banner>
 
+    <!-- LOADING SKELETON -->
     <div v-else-if="store.matchLoading && !match" class="q-gutter-md">
-      <q-skeleton type="rect" height="180px" />
-      <q-skeleton type="rect" height="260px" />
+      <q-skeleton type="rect" height="200px" />
+      <q-skeleton type="rect" height="300px" />
     </div>
 
     <template v-else-if="match">
-      <q-card flat bordered class="q-mb-md">
-        <q-card-section class="row items-center q-col-gutter-md">
-          <div class="col-12 row items-center justify-center match-heading">
-            <div class="col-4 text-center">
-              <ImagePreview
-                :src="match.homeTeam?.logoUrl"
-                fallback="/images/default-team.svg"
-                :alt="`Escudo de ${teamName(match.homeTeam)}`"
-                width="72px"
-                height="72px"
-                class="q-mb-sm"
-              />
-              <div class="text-subtitle1 text-weight-bold">{{ teamName(match.homeTeam) }}</div>
-              <div class="text-caption text-grey-7">Local</div>
+      <!-- BIG SPORTS MATCH SUMMARY BANNER -->
+      <q-card flat class="sports-match-banner q-mb-xl">
+        <q-card-section class="q-pa-lg">
+          <!-- CONTEXT INFO -->
+          <div class="row items-center justify-between q-mb-md">
+            <div class="row items-center gap-sm">
+              <span class="matchday-tag">JORNADA {{ match.matchday }}</span>
+              <span class="text-caption text-grey-5">{{ match.homeTeam?.stadium || 'Cancha Local' }}</span>
             </div>
 
-            <div class="col-4 text-center">
-              <div class="detail-score">
-                <span>{{ match.homeScore ?? 0 }}</span>
-                <span class="text-grey-6">–</span>
-                <span>{{ match.awayScore ?? 0 }}</span>
-              </div>
-              <q-badge :color="matchStatusColor(match.status)" rounded class="q-mt-sm">
-                {{ matchStatusLabel(match.status) }}
-              </q-badge>
+            <div v-if="isLive" class="status-live-badge">
+              <span class="live-dot-pulse"></span>
+              <span>🔴 EN VIVO</span>
             </div>
-
-            <div class="col-4 text-center">
-              <ImagePreview
-                :src="match.awayTeam?.logoUrl"
-                fallback="/images/default-team.svg"
-                :alt="`Escudo de ${teamName(match.awayTeam)}`"
-                width="72px"
-                height="72px"
-                class="q-mb-sm"
-              />
-              <div class="text-subtitle1 text-weight-bold">{{ teamName(match.awayTeam) }}</div>
-              <div class="text-caption text-grey-7">Visitante</div>
+            <div v-else-if="isFinished" class="status-finished-badge">
+              <q-icon name="check_circle" size="14px" class="q-mr-xs" />
+              <span>FINALIZADO</span>
+            </div>
+            <div v-else class="status-scheduled-badge">
+              <q-icon name="schedule" size="14px" class="q-mr-xs" />
+              <span>PROGRAMADO</span>
             </div>
           </div>
 
-          <div class="col-12 text-center text-body2 text-grey-7">
-            Jornada {{ match.matchday }} · {{ formatMatchDate(match.date) }}
+          <!-- 3-COLUMNS MATCH SCORE DISPLAY -->
+          <div class="match-banner-grid">
+            <!-- LOCAL TEAM -->
+            <div class="banner-team banner-team--home">
+              <div class="sport-crest-container banner-crest-box">
+                <ImagePreview
+                  :src="match.homeTeam?.logoUrl"
+                  fallback="/images/default-team.svg"
+                  :alt="`Escudo de ${teamName(match.homeTeam)}`"
+                  width="72px"
+                  height="72px"
+                />
+              </div>
+              <div class="banner-team-name">{{ teamName(match.homeTeam) }}</div>
+              <div class="banner-team-role">LOCAL</div>
+            </div>
+
+            <!-- SCORE CENTER -->
+            <div class="banner-score-box">
+              <div v-if="normalizeMatchStatus(match.status) === 'SCHEDULED'" class="banner-vs-label">
+                VS
+              </div>
+              <div v-else class="banner-digits">
+                <span>{{ match.homeScore ?? 0 }}</span>
+                <span class="banner-digits-dash">-</span>
+                <span>{{ match.awayScore ?? 0 }}</span>
+              </div>
+              <div class="banner-date-text">
+                {{ formatMatchDate(match.date) }}
+              </div>
+            </div>
+
+            <!-- AWAY TEAM -->
+            <div class="banner-team banner-team--away">
+              <div class="sport-crest-container banner-crest-box">
+                <ImagePreview
+                  :src="match.awayTeam?.logoUrl"
+                  fallback="/images/default-team.svg"
+                  :alt="`Escudo de ${teamName(match.awayTeam)}`"
+                  width="72px"
+                  height="72px"
+                />
+              </div>
+              <div class="banner-team-name">{{ teamName(match.awayTeam) }}</div>
+              <div class="banner-team-role">VISITANTE</div>
+            </div>
+          </div>
+
+          <!-- FINISH BUTTON IF NOT FINISHED -->
+          <div v-if="!isFinished" class="row justify-end q-mt-md">
+            <q-btn
+              unelevated
+              color="negative"
+              outline
+              icon="flag"
+              label="Finalizar Partido"
+              @click="finishMatch"
+            />
           </div>
         </q-card-section>
       </q-card>
 
-      <div v-if="normalizeMatchStatus(match.status) === 'IN_PROGRESS'" class="q-mb-md">
-        <q-banner rounded class="bg-green-1 text-primary">
-          En juego. El backend no envía el minuto actual; los minutos visibles corresponden solo a eventos registrados.
-        </q-banner>
-      </div>
-
-      <div v-if="!isFinished" class="row q-col-gutter-md q-mb-md">
+      <!-- REGISTRATION FORMS (GOAL & EVENT) IF NOT FINISHED -->
+      <div v-if="!isFinished" class="row q-col-gutter-lg q-mb-xl">
+        <!-- FORM 1: GOAL REGISTRATION -->
         <div class="col-12 col-lg-6">
-          <q-card flat bordered class="full-height">
-            <q-card-section>
-              <div class="text-subtitle1 text-weight-bold">Registrar gol</div>
-              <div class="text-caption text-grey-7 q-mb-md">El marcador se calcula desde los goles que valida la API.</div>
-              <q-form class="q-gutter-md" @submit.prevent="registerGoal">
+          <q-card flat class="sports-panel-card full-height">
+            <q-card-section class="q-pa-lg">
+              <div class="row items-center gap-sm q-mb-xs">
+                <q-icon name="sports_soccer" color="primary" size="20px" />
+                <div class="text-subtitle1 text-weight-bold text-white">Registrar Gol</div>
+              </div>
+              <div class="text-caption text-grey-5 q-mb-md">El marcador se actualiza automáticamente con cada gol validado.</div>
+
+              <q-form class="q-gutter-y-md" @submit.prevent="registerGoal">
                 <q-select
                   v-model="goalForm.team"
                   :options="teamOptions"
                   emit-value
                   map-options
-                  label="Equipo"
+                  label="Equipo que anota"
                   outlined
+                  stack-label
                   required
                 />
                 <q-select
@@ -295,8 +356,9 @@ const finishMatch = () => {
                   :options="goalPlayerOptions"
                   emit-value
                   map-options
-                  label="Jugador"
+                  label="Goleador (Anotador)"
                   outlined
+                  stack-label
                   required
                   :disable="!goalForm.team"
                 />
@@ -305,43 +367,69 @@ const finishMatch = () => {
                   :options="assistPlayerOptions"
                   emit-value
                   map-options
-                  label="Asistencia (opcional)"
+                  label="Asistencia / Pase de Gol (Opcional)"
                   outlined
+                  stack-label
                   clearable
                   :disable="!goalForm.team"
                 />
-                <q-input v-model.number="goalForm.minute" type="number" min="0" max="120" label="Minuto" outlined required />
-                <q-btn type="submit" color="primary" icon="sports_soccer" label="Guardar gol" :loading="goalSaving.value" />
+                <q-input
+                  v-model.number="goalForm.minute"
+                  type="number"
+                  min="0"
+                  max="120"
+                  label="Minuto del Gol"
+                  outlined
+                  stack-label
+                  required
+                />
+                <q-btn
+                  type="submit"
+                  color="primary"
+                  icon="sports_soccer"
+                  label="Guardar Gol"
+                  class="full-width q-py-sm"
+                  :loading="goalSaving.value"
+                  :disable="!goalForm.team || !goalForm.player"
+                />
               </q-form>
             </q-card-section>
           </q-card>
         </div>
 
+        <!-- FORM 2: EVENT (ASSIST / CARDS) REGISTRATION -->
         <div class="col-12 col-lg-6">
-          <q-card flat bordered class="full-height">
-            <q-card-section>
-              <div class="text-subtitle1 text-weight-bold">Registrar evento</div>
-              <div class="text-caption text-grey-7 q-mb-md">Tipos aceptados: asistencia y tarjetas.</div>
-              <q-form class="q-gutter-md" @submit.prevent="registerEvent">
+          <q-card flat class="sports-panel-card full-height">
+            <q-card-section class="q-pa-lg">
+              <div class="row items-center gap-sm q-mb-xs">
+                <q-icon name="style" color="secondary" size="20px" />
+                <div class="text-subtitle1 text-weight-bold text-white">Registrar Incidencia / Tarjeta</div>
+              </div>
+              <div class="text-caption text-grey-5 q-mb-md">Control disciplinario y asistencias del encuentro.</div>
+
+              <q-form class="q-gutter-y-md" @submit.prevent="registerEvent">
                 <q-select
                   v-model="eventForm.type"
                   :options="[
-                    { label: 'Asistencia', value: 'ASSIST' },
-                    { label: 'Tarjeta amarilla', value: 'YELLOW_CARD' },
-                    { label: 'Tarjeta roja', value: 'RED_CARD' },
+                    { label: 'Asistencia de gol 👟', value: 'ASSIST' },
+                    { label: 'Autogol (Gol en contra) ⚽ (AG)', value: 'OWN_GOAL' },
+                    { label: 'Tarjeta amarilla 🟨', value: 'YELLOW_CARD' },
+                    { label: 'Tarjeta roja 🟥', value: 'RED_CARD' },
                   ]"
                   emit-value
                   map-options
-                  label="Tipo de evento"
+                  label="Tipo de Incidencia"
                   outlined
+                  stack-label
                 />
                 <q-select
                   v-model="eventForm.team"
                   :options="teamOptions"
                   emit-value
                   map-options
-                  label="Equipo"
+                  label="Equipo involucrado"
                   outlined
+                  stack-label
                   required
                 />
                 <q-select
@@ -349,75 +437,108 @@ const finishMatch = () => {
                   :options="eventPlayerOptions"
                   emit-value
                   map-options
-                  label="Jugador"
+                  label="Jugador involucrado"
                   outlined
+                  stack-label
                   required
                   :disable="!eventForm.team"
                 />
-                <q-input v-model.number="eventForm.minute" type="number" min="0" max="120" label="Minuto" outlined required />
-                <q-btn type="submit" color="secondary" icon="add_task" label="Guardar evento" :loading="eventSaving.value" />
+                <q-input
+                  v-model.number="eventForm.minute"
+                  type="number"
+                  min="0"
+                  max="120"
+                  label="Minuto del Suceso"
+                  outlined
+                  stack-label
+                  required
+                />
+                <q-btn
+                  type="submit"
+                  color="secondary"
+                  icon="add_task"
+                  label="Guardar Incidencia"
+                  class="full-width q-py-sm"
+                  :loading="eventSaving.value"
+                  :disable="!eventForm.team || !eventForm.player"
+                />
               </q-form>
             </q-card-section>
           </q-card>
         </div>
       </div>
 
-      <div class="row justify-end q-mb-md">
-        <q-btn
-          v-if="match.status !== 'FINISHED'"
-          color="negative"
-          outline
-          icon="flag"
-          label="Finalizar partido"
-          @click="finishMatch"
-        />
-      </div>
+      <!-- MATCH TIMELINE / CRONOLOGÍA -->
+      <q-card flat class="sports-panel-card q-mb-xl">
+        <q-card-section class="q-pa-lg">
+          <div class="row items-center gap-sm q-mb-md">
+            <q-icon name="history" color="primary" size="22px" />
+            <div class="text-subtitle1 text-weight-bold text-white">Cronología del Encuentro</div>
+          </div>
 
-      <q-card flat bordered>
-        <q-card-section>
-          <div class="text-subtitle1 text-weight-bold q-mb-md">Cronología del encuentro</div>
-
-          <div v-if="timeline.length" class="match-timeline">
-            <div class="match-timeline__header">
-              <div class="match-timeline__team-name">{{ teamName(match.homeTeam) }}</div>
-              <div class="match-timeline__team-name match-timeline__team-name--center">Minuto</div>
-              <div class="match-timeline__team-name match-timeline__team-name--right">{{ teamName(match.awayTeam) }}</div>
+          <div v-if="timeline.length" class="sports-timeline">
+            <!-- TIMELINE HEADER -->
+            <div class="sports-timeline__header">
+              <div class="timeline-team-head text-left">{{ teamName(match.homeTeam) }} (LOCAL)</div>
+              <div class="timeline-min-head">MIN</div>
+              <div class="timeline-team-head text-right">{{ teamName(match.awayTeam) }} (VISITANTE)</div>
             </div>
 
-            <div v-for="event in timeline" :key="`${event.type}-${event.playerId}-${event.minute}-${event.teamId}-${event.sourceOrder}`" class="match-timeline__row">
-              <div class="match-timeline__side">
-                <div v-if="event.side === 'home'" class="match-timeline__event match-timeline__event--home">
-                  <span class="match-timeline__icon" :class="`match-timeline__icon--${event.type.toLowerCase()}`">
+            <!-- TIMELINE ROWS -->
+            <div
+              v-for="event in timeline"
+              :key="`${event.type}-${event.playerId}-${event.minute}-${event.teamId}-${event.sourceOrder}`"
+              class="sports-timeline__row"
+            >
+              <!-- LEFT SIDE (HOME) -->
+              <div class="timeline-side timeline-side--left">
+                <div v-if="event.side === 'home'" class="timeline-event-card timeline-event-card--home">
+                  <div class="timeline-icon-pill" :class="`timeline-icon-pill--${event.type.toLowerCase()}`">
                     <q-icon :name="event.icon" :color="event.color" size="16px" />
-                  </span>
-                  <div class="match-timeline__content">
-                    <strong>{{ event.label }}</strong>
-                    <span>{{ event.playerName }}</span>
+                  </div>
+                  <div class="timeline-event-details text-left">
+                    <div class="row items-center gap-xs">
+                      <span class="timeline-event-title" :class="{ 'text-negative': event.type === 'OWN_GOAL' }">
+                        {{ event.label }}
+                      </span>
+                      <q-badge v-if="event.type === 'OWN_GOAL'" color="negative" class="text-weight-bolder q-px-xs">
+                        ⚽ (AG)
+                      </q-badge>
+                    </div>
+                    <span class="timeline-event-player">{{ event.playerName }}</span>
                   </div>
                 </div>
-                <div v-else class="match-timeline__empty-cell" aria-hidden="true"></div>
               </div>
 
-              <div class="match-timeline__minute-pill">{{ event.minute }}'</div>
+              <!-- CENTER MINUTE PILL -->
+              <div class="timeline-center-minute">
+                <span>{{ event.minute }}'</span>
+              </div>
 
-              <div class="match-timeline__side match-timeline__side--right">
-                <div v-if="event.side === 'away'" class="match-timeline__event match-timeline__event--away">
-                  <div class="match-timeline__content match-timeline__content--right">
-                    <strong>{{ event.label }}</strong>
-                    <span>{{ event.playerName }}</span>
+              <!-- RIGHT SIDE (AWAY) -->
+              <div class="timeline-side timeline-side--right">
+                <div v-if="event.side === 'away'" class="timeline-event-card timeline-event-card--away">
+                  <div class="timeline-event-details text-right">
+                    <div class="row items-center justify-end gap-xs">
+                      <q-badge v-if="event.type === 'OWN_GOAL'" color="negative" class="text-weight-bolder q-px-xs">
+                        ⚽ (AG)
+                      </q-badge>
+                      <span class="timeline-event-title" :class="{ 'text-negative': event.type === 'OWN_GOAL' }">
+                        {{ event.label }}
+                      </span>
+                    </div>
+                    <span class="timeline-event-player">{{ event.playerName }}</span>
                   </div>
-                  <span class="match-timeline__icon" :class="`match-timeline__icon--${event.type.toLowerCase()}`">
+                  <div class="timeline-icon-pill" :class="`timeline-icon-pill--${event.type.toLowerCase()}`">
                     <q-icon :name="event.icon" :color="event.color" size="16px" />
-                  </span>
+                  </div>
                 </div>
-                <div v-else class="match-timeline__empty-cell" aria-hidden="true"></div>
               </div>
             </div>
           </div>
 
-          <div v-else class="text-grey-7">Todavía no hay goles ni eventos registrados en este partido.</div>
-          <div v-if="isFinished" class="text-caption text-grey-7 q-mt-md">
-            Resultado final: {{ match.homeScore ?? 0 }}–{{ match.awayScore ?? 0 }}.
+          <div v-else class="text-caption text-grey-5 text-center q-pa-lg">
+            Todavía no hay goles ni incidencias registradas en este partido.
           </div>
         </q-card-section>
       </q-card>
@@ -426,175 +547,237 @@ const finishMatch = () => {
 </template>
 
 <style scoped>
-.detail-score {
-  display: flex;
-  justify-content: center;
-  gap: 14px;
-  font-size: clamp(2rem, 5vw, 3.5rem);
+.match-detail-page {
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.sports-match-banner {
+  background: var(--tb-surface) !important;
+  border: 1px solid var(--tb-border) !important;
+  border-radius: var(--tb-radius-lg) !important;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4) !important;
+}
+
+.matchday-tag {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #10b981;
+  font-size: 0.72rem;
   font-weight: 800;
-  line-height: 1.1;
+  padding: 4px 10px;
+  border-radius: 4px;
+  letter-spacing: 0.06em;
 }
 
-.match-heading {
-  min-height: 150px;
+.match-banner-grid {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 24px;
+  padding: 16px 0;
 }
 
-.match-timeline {
+.banner-team {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-}
-
-.match-timeline__header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr);
-  gap: 10px;
   align-items: center;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(17, 24, 39, 0.08);
-}
-
-.match-timeline__team-name {
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  font-weight: 800;
-  color: #29453a;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.match-timeline__team-name--center {
   text-align: center;
-  color: #5c6d67;
 }
 
-.match-timeline__team-name--right {
-  text-align: right;
+.banner-crest-box {
+  width: 82px;
+  height: 82px;
+  border: 2px solid var(--tb-border);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  margin-bottom: 10px;
 }
 
-.match-timeline__row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr);
-  gap: 10px;
+.banner-team-name {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #ffffff;
+  max-width: 200px;
+}
+
+.banner-team-role {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--tb-muted);
+  margin-top: 2px;
+}
+
+.banner-score-box {
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  justify-content: center;
+  min-width: 160px;
 }
 
-.match-timeline__side {
-  min-width: 0;
+.banner-vs-label {
+  font-size: 2.2rem;
+  font-weight: 900;
+  color: var(--tb-primary);
+  background: var(--tb-bg);
+  border: 1px solid var(--tb-border);
+  padding: 10px 24px;
+  border-radius: var(--tb-radius-md);
+}
+
+.banner-digits {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--tb-bg);
+  border: 1px solid var(--tb-border);
+  padding: 12px 28px;
+  border-radius: var(--tb-radius-md);
+  font-size: 3rem;
+  font-weight: 900;
+  color: #ffffff;
+  line-height: 1;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.banner-digits-dash {
+  color: var(--tb-muted);
+  font-size: 1.8rem;
+}
+
+.banner-date-text {
+  font-size: 0.76rem;
+  color: var(--tb-muted);
+  font-weight: 600;
+  margin-top: 10px;
+}
+
+.sports-panel-card {
+  background: var(--tb-surface) !important;
+  border: 1px solid var(--tb-border) !important;
+  border-radius: var(--tb-radius-md) !important;
+}
+
+/* Timeline */
+.sports-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sports-timeline__header {
+  display: grid;
+  grid-template-columns: 1fr 64px 1fr;
+  align-items: center;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--tb-border);
+}
+
+.timeline-team-head {
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--tb-muted);
+  text-transform: uppercase;
+}
+
+.timeline-min-head {
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--tb-primary);
+}
+
+.sports-timeline__row {
+  display: grid;
+  grid-template-columns: 1fr 64px 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.timeline-side {
   display: flex;
   align-items: center;
+  width: 100%;
+}
+
+.timeline-side--left {
+  justify-content: flex-end;
+}
+
+.timeline-side--right {
   justify-content: flex-start;
 }
 
-.match-timeline__side--right {
-  justify-content: flex-end;
-}
-
-.match-timeline__event {
+.timeline-event-card {
   display: flex;
   align-items: center;
   gap: 10px;
+  background: var(--tb-surface-raised);
+  border: 1px solid var(--tb-border);
+  border-radius: var(--tb-radius-md);
+  padding: 8px 14px;
+  max-width: 320px;
   width: 100%;
-  min-height: 52px;
-  padding: 10px 12px;
-  background: #f7faf8;
-  border: 1px solid rgba(17, 24, 39, 0.05);
-  border-radius: 12px;
 }
 
-.match-timeline__event--away {
-  justify-content: flex-end;
-  text-align: right;
-}
-
-.match-timeline__content {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1;
-}
-
-.match-timeline__content strong {
-  font-size: 0.72rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #1d5f41;
-}
-
-.match-timeline__content span {
-  color: #475a55;
-  font-size: 0.8rem;
-  word-break: break-word;
-}
-
-.match-timeline__content--right {
-  align-items: flex-end;
-  text-align: right;
-}
-
-.match-timeline__minute-pill {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  color: #183126;
-  font-size: 0.72rem;
-  background: rgba(20, 125, 74, 0.08);
-  border-radius: 999px;
-  height: 28px;
-  width: 100%;
-  border: 1px solid rgba(20, 125, 74, 0.12);
-}
-
-.match-timeline__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
+.timeline-icon-pill {
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
+  background: var(--tb-surface);
+  border: 1px solid var(--tb-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
 }
 
-.match-timeline__icon--goal {
-  background: #ecfdf5;
+.timeline-event-details {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 
-.match-timeline__icon--assist {
-  background: #eef5ff;
+.timeline-event-title {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--tb-primary);
+  text-transform: uppercase;
 }
 
-.match-timeline__icon--yellow_card {
-  background: #fff7d6;
+.timeline-event-player {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.match-timeline__icon--red_card {
-  background: #fdecec;
+.timeline-center-minute {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--tb-bg);
+  border: 1px solid var(--tb-border);
+  border-radius: 9999px;
+  height: 28px;
+  font-size: 0.72rem;
+  font-weight: 900;
+  color: var(--tb-primary);
 }
 
-.match-timeline__empty-cell {
-  min-height: 52px;
-  width: 100%;
-}
-
-@media (max-width: 768px) {
-  .match-timeline__header,
-  .match-timeline__row {
-    grid-template-columns: minmax(0, 1fr) 56px minmax(0, 1fr);
-    gap: 8px;
-  }
-
-  .match-timeline__event {
-    padding: 8px 10px;
-  }
-
-  .match-timeline__team-name {
-    letter-spacing: 0.04em;
-    font-size: 0.68rem;
+@media (max-width: 600px) {
+  .match-banner-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
   }
 }
 </style>

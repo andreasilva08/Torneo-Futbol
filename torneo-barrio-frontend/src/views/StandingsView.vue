@@ -6,25 +6,25 @@ import ImagePreview from '@/components/ImagePreview.vue'
 const store = useTournamentStore()
 
 const positionStyles = (position) => {
-  if (position === 1) return 'standings-table__podium standings-table__podium--gold'
-  if (position === 2) return 'standings-table__podium standings-table__podium--silver'
-  if (position === 3) return 'standings-table__podium standings-table__podium--bronze'
-  return 'standings-table__position'
+  if (position === 1) return 'standings-rank standings-rank--champion'
+  if (position >= 2 && position <= 4) return 'standings-rank standings-rank--playoff'
+  return 'standings-rank standings-rank--regular'
 }
 
 const goalDiffClass = (value) => {
-  if (Number(value) > 0) return 'standings-table__diff standings-table__diff--positive'
-  if (Number(value) < 0) return 'standings-table__diff standings-table__diff--negative'
-  return 'standings-table__diff standings-table__diff--neutral'
+  if (Number(value) > 0) return 'dg-badge dg-badge--positive'
+  if (Number(value) < 0) return 'dg-badge dg-badge--negative'
+  return 'dg-badge dg-badge--neutral'
 }
 
-const pointsClass = (value) => {
-  return Number(value) > 0 ? 'standings-table__points' : 'standings-table__points standings-table__points--muted'
-}
-
-const teamNameClass = (value) => {
-  if (!value) return 'standings-table__team-name'
-  return 'standings-table__team-name'
+const getTeamSubtext = (row) => {
+  if (row.cleanSheets !== undefined && row.cleanSheets !== null) {
+    return `${row.cleanSheets} vallas invictas`
+  }
+  if (row.neighborhood) {
+    return `${row.neighborhood} · 0 vallas invictas`
+  }
+  return '0 vallas invictas'
 }
 
 onMounted(async () => {
@@ -33,77 +33,159 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div>
-    <div class="row items-center q-mb-lg">
-      <div>
-        <p class="text-caption text-uppercase text-grey-7 q-mb-xs">Estadísticas</p>
-        <h1 class="text-h4 text-weight-bold q-ma-none">Tabla de posiciones</h1>
+  <div class="standings-page">
+    <!-- PAGE HEADER -->
+    <div class="sport-page-header">
+      <div class="sport-page-header__left">
+        <div class="sport-page-header__icon-box">
+          <q-icon name="table_chart" />
+        </div>
+        <div>
+          <div class="sport-page-header__eyebrow">ESTADÍSTICAS OFICIALES · TEMPORADA 2026</div>
+          <h1 class="sport-page-header__title">Tabla General de Posiciones</h1>
+        </div>
+      </div>
+
+      <div class="row items-center q-gutter-sm">
+        <q-badge color="primary" class="q-px-sm q-py-xs text-weight-bolder" style="font-size: 0.76rem;">
+          LIGA REGULAR
+        </q-badge>
       </div>
     </div>
 
-    <q-card flat bordered class="standings-card">
-      <q-card-section>
-        <div class="standings-header q-mb-md">
-          <div class="text-subtitle1 text-weight-bold">Clasificación general</div>
-          <q-badge color="primary" rounded class="standings-header__badge">Liga</q-badge>
+    <!-- MAIN STANDINGS CARD -->
+    <q-card flat class="standings-card">
+      <q-card-section class="q-pa-lg">
+        <div class="row items-center justify-between q-mb-md">
+          <div class="row items-center gap-sm">
+            <q-icon name="military_tech" color="accent" size="22px" />
+            <div class="text-subtitle1 text-weight-bold text-white">Clasificación General</div>
+          </div>
+          <div class="text-caption text-grey-5">
+            Puntos: Victoria = 3 pts · Empate = 1 pt · Derrota = 0 pts
+          </div>
         </div>
 
+        <!-- STANDINGS TABLE -->
         <q-table
           :rows="store.standings"
           :columns="[
-            { name: 'position', label: 'Puesto', field: 'position', align: 'center' },
-            { name: 'team', label: 'Equipo', field: 'name' },
+            { name: 'position', label: 'POS', field: 'position', align: 'center' },
+            { name: 'team', label: 'EQUIPO', field: 'name', align: 'left' },
             { name: 'played', label: 'PJ', field: 'played', align: 'center' },
-            { name: 'wins', label: 'G', field: 'wins', align: 'center' },
-            { name: 'draws', label: 'E', field: 'draws', align: 'center' },
-            { name: 'losses', label: 'P', field: 'losses', align: 'center' },
+            { name: 'wins', label: 'PG', field: 'wins', align: 'center' },
+            { name: 'draws', label: 'PE', field: 'draws', align: 'center' },
+            { name: 'losses', label: 'PP', field: 'losses', align: 'center' },
             { name: 'goalsFor', label: 'GF', field: 'goalsFor', align: 'center' },
             { name: 'goalsAgainst', label: 'GC', field: 'goalsAgainst', align: 'center' },
             { name: 'goalDifference', label: 'DG', field: 'goalDifference', align: 'center' },
-            { name: 'points', label: 'Pts', field: 'points', align: 'center' },
+            { name: 'points', label: 'PUNTOS', field: 'points', align: 'center' },
           ]"
           row-key="_id"
           flat
           hide-pagination
-          class="standings-table q-mt-md"
+          class="standings-sports-table"
         >
+          <!-- POSITION CELL -->
           <template #body-cell-position="props">
             <q-td :props="props" class="text-center">
               <span :class="positionStyles(props.row.position)">{{ props.row.position }}</span>
             </q-td>
           </template>
 
+          <!-- TEAM CELL -->
           <template #body-cell-team="props">
             <q-td :props="props">
-              <div class="standings-table__team-cell">
-                <ImagePreview
-                  :src="props.row.logoUrl"
-                  fallback="/images/default-team.svg"
-                  :alt="`Escudo de ${props.row.name || 'equipo'}`"
-                  width="34px"
-                  height="34px"
-                  class="standings-table__team-mark"
-                />
-                <span :class="teamNameClass(props.row.name)">{{ props.row.name }}</span>
+              <div class="row items-center no-wrap gap-md">
+                <div class="sport-crest-container standings-crest-box">
+                  <ImagePreview
+                    :src="props.row.logoUrl"
+                    fallback="/images/default-team.svg"
+                    :alt="`Escudo de ${props.row.name || 'equipo'}`"
+                    width="36px"
+                    height="36px"
+                  />
+                </div>
+                <div>
+                  <div class="standings-team-name">{{ props.row.name }}</div>
+                  <div class="standings-team-subtext">{{ getTeamSubtext(props.row) }}</div>
+                </div>
               </div>
             </q-td>
           </template>
 
-          <template #body-cell-goalDifference="props">
-            <q-td :props="props" class="text-center">
-              <span :class="goalDiffClass(props.row.goalDifference)">{{ props.row.goalDifference > 0 ? '+' : '' }}{{ props.row.goalDifference }}</span>
+          <!-- STATS CELLS (PJ, PG, PE, PP, GF, GC) -->
+          <template #body-cell-played="props">
+            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 0.95rem;">
+              {{ props.row.played }}
+            </q-td>
+          </template>
+          <template #body-cell-wins="props">
+            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 0.95rem;">
+              {{ props.row.wins }}
+            </q-td>
+          </template>
+          <template #body-cell-draws="props">
+            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 0.95rem;">
+              {{ props.row.draws }}
+            </q-td>
+          </template>
+          <template #body-cell-losses="props">
+            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 0.95rem;">
+              {{ props.row.losses }}
+            </q-td>
+          </template>
+          <template #body-cell-goalsFor="props">
+            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 0.95rem;">
+              {{ props.row.goalsFor }}
+            </q-td>
+          </template>
+          <template #body-cell-goalsAgainst="props">
+            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 0.95rem;">
+              {{ props.row.goalsAgainst }}
             </q-td>
           </template>
 
+          <!-- DG (GOAL DIFFERENCE) -->
+          <template #body-cell-goalDifference="props">
+            <q-td :props="props" class="text-center">
+              <span :class="goalDiffClass(props.row.goalDifference)">
+                [{{ props.row.goalDifference > 0 ? '+' : '' }}{{ props.row.goalDifference }}]
+              </span>
+            </q-td>
+          </template>
+
+          <!-- POINTS CELL (PUNTOS) -->
           <template #body-cell-points="props">
             <q-td :props="props" class="text-center">
-              <span :class="pointsClass(props.row.points)">{{ props.row.points }} PTS</span>
+              <span class="pts-badge">
+                {{ props.row.points }} <small>PTS</small>
+              </span>
             </q-td>
           </template>
         </q-table>
 
-        <div v-if="!store.standings.length" class="text-grey-7 q-mt-md">
-          Aún no hay datos suficientes para calcular la tabla.
+        <div v-if="!store.standings.length" class="text-grey-5 q-mt-lg text-center q-pa-lg">
+          Aún no hay datos suficientes de partidos disputados para calcular la tabla.
+        </div>
+
+        <!-- LEYENDA Y CRITERIO DE DESEMPATE (FOOTER) -->
+        <div class="standings-footer row items-center justify-between q-mt-lg q-pt-md">
+          <div class="row items-center gap-md">
+            <div class="row items-center gap-xs text-caption">
+              <span class="legend-dot legend-dot--champion"></span>
+              <span class="text-weight-bold text-white">1º Puesto:</span>
+              <span class="text-grey-4">Campeón de Barrio</span>
+            </div>
+            <div class="row items-center gap-xs text-caption">
+              <span class="legend-dot legend-dot--playoff"></span>
+              <span class="text-weight-bold text-white">2º - 4º:</span>
+              <span class="text-grey-4">Clasificación a Liguilla</span>
+            </div>
+          </div>
+          <div class="text-caption text-grey-5 text-right standings-tiebreaker">
+            Criterio: Puntos → Diferencia de Gol → Goles a Favor → Partidos Ganados
+          </div>
         </div>
       </q-card-section>
     </q-card>
@@ -111,130 +193,193 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.standings-page {
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .standings-card {
-  background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(243,249,245,0.96));
-}
-
-.standings-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.standings-header__badge {
-  font-size: 0.68rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  font-weight: 800;
-}
-
-.standings-table :deep(.q-table__middle) {
-  border-radius: 18px;
+  background: var(--tb-surface) !important;
+  border: 1px solid var(--tb-border) !important;
+  border-radius: var(--tb-radius-md) !important;
   overflow: hidden;
 }
 
-.standings-table :deep(thead th) {
-  font-size: 0.72rem;
+.standings-sports-table {
+  background: transparent !important;
 }
 
-.standings-table :deep(tbody tr) {
-  height: 72px;
+.standings-sports-table :deep(thead th) {
+  background: var(--tb-surface-raised) !important;
+  color: #94a3b8 !important;
+  font-size: 0.8rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.08em !important;
+  padding: 14px 12px !important;
+  text-transform: uppercase;
 }
 
-.standings-table__team-cell {
+.standings-sports-table :deep(tbody tr) {
+  height: 64px;
+}
+
+.standings-sports-table :deep(tbody tr:nth-child(even)) {
+  background: rgba(30, 41, 59, 0.45) !important;
+}
+
+.standings-sports-table :deep(tbody tr:hover) {
+  background: rgba(16, 185, 129, 0.08) !important;
+}
+
+/* Position Rank Badges */
+.standings-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 0.82rem;
+  font-weight: 900;
+  background: var(--tb-surface-raised);
+  color: var(--tb-muted);
+}
+
+.standings-rank--champion {
+  background: linear-gradient(135deg, #eab308 0%, #ca8a04 100%) !important;
+  color: #0b111e !important;
+  box-shadow: 0 0 14px rgba(234, 179, 8, 0.55);
+}
+
+.standings-rank--playoff {
+  background: #2563eb !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 10px rgba(37, 99, 235, 0.4);
+}
+
+.standings-rank--regular {
+  background: #1e293b !important;
+  color: #94a3b8 !important;
+}
+
+/* Team Crest & Names */
+.standings-crest-box {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border: 1px solid var(--tb-border);
+  border-radius: 50%;
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-width: 180px;
+  justify-content: center;
+  background: var(--tb-surface-raised);
 }
 
-.standings-table__team-mark {
+.standings-team-name {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+}
+
+.standings-team-subtext {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+/* Goal Difference (DG) Delimited Box */
+.dg-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #1f6d53, #37a66d);
-  color: #fff;
-  font-size: 0.75rem;
+  min-width: 42px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.84rem;
   font-weight: 800;
+  font-family: monospace;
+  letter-spacing: 0.04em;
 }
 
-.standings-table__team-name {
-  font-weight: 800;
-  color: #143327;
-  letter-spacing: -0.02em;
+.dg-badge--positive {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.35);
 }
 
-.standings-table__position,
-.standings-table__podium {
+.dg-badge--negative {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.dg-badge--neutral {
+  background: rgba(148, 163, 184, 0.1);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+/* Points Badge (PUNTOS) */
+.pts-badge {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-width: 30px;
-  height: 30px;
-  border-radius: 10px;
+  gap: 4px;
+  background: rgba(234, 179, 8, 0.16);
+  border: 1px solid rgba(234, 179, 8, 0.45);
+  color: #facc15;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 1.05rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  box-shadow: 0 0 10px rgba(234, 179, 8, 0.15);
+}
+
+.pts-badge small {
+  font-size: 0.68rem;
   font-weight: 800;
-  color: #1e382f;
-  background: rgba(22, 86, 63, 0.07);
+  opacity: 0.9;
 }
 
-.standings-table__podium--gold {
-  background: linear-gradient(135deg, #f8d765, #f3b927);
-  color: #4a2b00;
+/* Footer & Legend */
+.standings-footer {
+  border-top: 1px solid var(--tb-border);
 }
 
-.standings-table__podium--silver {
-  background: linear-gradient(135deg, #e3e7ee, #c7ced9);
-  color: #243347;
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
 }
 
-.standings-table__podium--bronze {
-  background: linear-gradient(135deg, #f4d8c0, #dd9e6e);
-  color: #5b2b12;
+.legend-dot--champion {
+  background: #f97316;
+  box-shadow: 0 0 6px #f97316;
 }
 
-.standings-table__diff,
-.standings-table__points {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 44px;
-  height: 32px;
-  border-radius: 10px;
-  font-weight: 800;
+.legend-dot--playoff {
+  background: #2563eb;
+  box-shadow: 0 0 6px #2563eb;
 }
 
-.standings-table__diff--positive {
-  background: rgba(29, 143, 92, 0.12);
-  color: var(--tb-success);
-}
-
-.standings-table__diff--negative {
-  background: rgba(214, 82, 82, 0.12);
-  color: var(--tb-danger);
-}
-
-.standings-table__diff--neutral {
-  background: rgba(81, 108, 98, 0.08);
-  color: #49615b;
-}
-
-.standings-table__points {
-  background: linear-gradient(135deg, rgba(28, 100, 74, 0.12), rgba(46, 143, 100, 0.18));
-  color: #0d442f;
-}
-
-.standings-table__points--muted {
-  opacity: 0.75;
+.standings-tiebreaker {
+  letter-spacing: 0.02em;
 }
 
 @media (max-width: 768px) {
-  .standings-header {
+  .standings-footer {
     flex-direction: column;
     align-items: flex-start;
+    gap: 8px;
+  }
+  .standings-tiebreaker {
+    text-align: left;
   }
 }
 </style>

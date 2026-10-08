@@ -32,7 +32,7 @@ const eventSchema = new mongoose.Schema(
     type: {
       type: String,
       enum: {
-        values: ['ASSIST', 'YELLOW_CARD', 'RED_CARD'],
+        values: ['ASSIST', 'YELLOW_CARD', 'RED_CARD', 'OWN_GOAL'],
         message: '{VALUE} no es un tipo de evento válido'
       },
       required: [true, 'El tipo de evento es obligatorio']

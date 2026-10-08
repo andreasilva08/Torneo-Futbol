@@ -15,9 +15,14 @@ const saving = ref(false)
 const searchQuery = ref('')
 const filterStatus = ref('ALL')
 const sortMode = ref('matchday')
+const activeMatchdayFilter = ref(null)
+
 const form = reactive({
   matchday: null,
-  date: '',
+  matchDate: '',
+  matchTime: '16:00',
+  stadium: 'Cancha Principal',
+  referee: '',
   homeTeam: '',
   awayTeam: '',
 })
@@ -26,12 +31,6 @@ const teamOptions = computed(() => store.teams.map((team) => ({
   label: team.name,
   value: team._id,
 })))
-
-const statusLabels = {
-  SCHEDULED: 'Programado',
-  IN_PROGRESS: 'En curso',
-  FINISHED: 'Finalizado',
-}
 
 const getTeamName = (team) => {
   if (!team) return 'Equipo'
@@ -47,31 +46,6 @@ const getTeamLogo = (team) => {
 }
 
 const formatMatchdayLabel = (matchday) => `Jornada ${Number(matchday) || 1}`
-
-const formatDateLabel = (value) => {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return 'Fecha por confirmar'
-  }
-
-  return new Intl.DateTimeFormat('es-ES', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  }).format(date)
-}
-
-const formatTimeLabel = (value) => {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return 'Hora por confirmar'
-  }
-
-  return new Intl.DateTimeFormat('es-ES', {
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(date)
-}
 
 const getFinishedMatchdaysForTeam = (teamId) => {
   if (!teamId) return []
@@ -100,7 +74,7 @@ const matchdayComparison = computed(() => Array.from({ length: 38 }, (_, index) 
 
   return {
     value,
-    label: `Jornada ${value}`,
+    label: `J${value}`,
     homeDisputed,
     awayDisputed,
     available,
@@ -111,9 +85,13 @@ const matchdayComparison = computed(() => Array.from({ length: 38 }, (_, index) 
 const availableMatchdays = computed(() => matchdayComparison.value.filter((day) => day.available).map((day) => day.value))
 
 const resetForm = () => {
+  const today = new Date().toISOString().split('T')[0]
   Object.assign(form, {
     matchday: null,
-    date: '',
+    matchDate: today,
+    matchTime: '16:00',
+    stadium: 'Cancha Principal',
+    referee: '',
     homeTeam: '',
     awayTeam: '',
   })
@@ -140,12 +118,21 @@ const scheduleMatch = async () => {
     return
   }
 
+  if (!form.matchDate) {
+    $q.notify({ type: 'warning', message: 'Debes ingresar la fecha del encuentro.' })
+    return
+  }
+
   saving.value = true
 
   try {
+    const timeStr = form.matchTime || '16:00'
+    const matchDateObj = new Date(`${form.matchDate}T${timeStr}:00`)
+    const finalDateIso = Number.isNaN(matchDateObj.getTime()) ? new Date().toISOString() : matchDateObj.toISOString()
+
     const created = await store.createMatch({
       matchday: Number(form.matchday),
-      date: new Date(form.date).toISOString(),
+      date: finalDateIso,
       homeTeam: form.homeTeam,
       awayTeam: form.awayTeam,
     })
@@ -184,6 +171,12 @@ const currentMatchday = computed(() => {
   return values.length ? Math.max(...values) : null
 })
 
+const allMatchdayNumbers = computed(() => {
+  const days = new Set()
+  for (let i = 1; i <= 38; i++) days.add(i)
+  return Array.from(days)
+})
+
 const filteredMatches = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
 
@@ -191,7 +184,8 @@ const filteredMatches = computed(() => {
     const teamNames = `${getTeamName(match.homeTeam)} ${getTeamName(match.awayTeam)} ${formatMatchdayLabel(match.matchday)}`.toLowerCase()
     const matchesSearch = !query || teamNames.includes(query)
     const matchesStatus = filterStatus.value === 'ALL' || normalizeMatchStatus(match.status) === filterStatus.value
-    return matchesSearch && matchesStatus
+    const matchesMatchday = !activeMatchdayFilter.value || Number(match.matchday) === activeMatchdayFilter.value
+    return matchesSearch && matchesStatus && matchesMatchday
   })
 })
 
@@ -226,11 +220,9 @@ const groupedMatches = computed(() => {
       if (sortMode.value === 'date-desc') {
         return new Date(second.date || 0).getTime() - new Date(first.date || 0).getTime()
       }
-
       if (sortMode.value === 'date-asc') {
         return new Date(first.date || 0).getTime() - new Date(second.date || 0).getTime()
       }
-
       return compareMatchesByMatchday(first, second)
     }),
     isCurrent: currentMatchday.value !== null && Number(matchday) === Number(currentMatchday.value),
@@ -257,20 +249,12 @@ const teamMatchdays = computed(() => {
   return matchesByTeam.sort((first, second) => first.team.name.localeCompare(second.team.name))
 })
 
-const getScore = (match) => {
-  const normalizedStatus = normalizeMatchStatus(match.status)
-  if (normalizedStatus === 'FINISHED' || normalizedStatus === 'IN_PROGRESS') {
-    return `${match.homeScore ?? 0} - ${match.awayScore ?? 0}`
+const selectMatchday = (day) => {
+  if (activeMatchdayFilter.value === day) {
+    activeMatchdayFilter.value = null // Deseleccionar para ver todos
+  } else {
+    activeMatchdayFilter.value = day
   }
-
-  return 'VS'
-}
-
-const getStateClass = (status) => {
-  const normalizedStatus = normalizeMatchStatus(status)
-  if (normalizedStatus === 'FINISHED') return 'match-card__chip--finished'
-  if (normalizedStatus === 'IN_PROGRESS') return 'match-card__chip--live'
-  return 'match-card__chip--scheduled'
 }
 
 onMounted(async () => {
@@ -279,27 +263,30 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div>
-    <div class="page-header q-mb-xl">
-      <div class="page-header__title-block">
-        <div class="page-header__icon">
-          <q-icon name="sports_soccer" size="1.4rem" />
+  <div class="matches-page">
+    <!-- PAGE HEADER -->
+    <div class="sport-page-header">
+      <div class="sport-page-header__left">
+        <div class="sport-page-header__icon-box">
+          <q-icon name="event" />
         </div>
         <div>
-          <p class="page-header__eyebrow">Calendario</p>
-          <h1 class="page-header__title">Partidos</h1>
+          <div class="sport-page-header__eyebrow">TEMPORADA 2026 · FIXTURE & CALENDARIO</div>
+          <h1 class="sport-page-header__title">Partidos y Jornadas</h1>
         </div>
       </div>
+
       <q-btn
-        class="page-header__cta"
+        unelevated
         color="primary"
         icon="add"
-        label="Programar partido"
+        label="Programar Partido"
         :disable="store.teams.length < 2"
         @click="openDialog"
       />
     </div>
 
+    <!-- ERROR & WARNING BANNERS -->
     <q-banner v-if="store.matchesError" rounded class="bg-negative text-white q-mb-md">
       No se pudieron consultar los partidos: {{ store.matchesError }}
     </q-banner>
@@ -311,225 +298,428 @@ onMounted(async () => {
       <q-skeleton v-for="item in 3" :key="item" type="rect" height="120px" />
     </div>
 
-    <div v-else class="match-page">
-      <div class="match-toolbar q-mb-xl">
-        <q-input
-          v-model="searchQuery"
-          dense
-          outlined
-          clearable
-          label="Buscar partido"
-          class="match-toolbar__search"
-        />
+    <div v-else>
+      <!-- TOOLBAR & FILTERS -->
+      <div class="sports-toolbar q-mb-lg">
+        <div class="row q-col-gutter-md items-center">
+          <!-- SEARCH INPUT -->
+          <div class="col-12 col-md-4">
+            <q-input
+              v-model="searchQuery"
+              dense
+              outlined
+              clearable
+              label="Buscar por equipo o jornada"
+            >
+              <template #prepend>
+                <q-icon name="search" />
+              </template>
+            </q-input>
+          </div>
 
-        <div class="match-toolbar__filters">
-          <q-btn-toggle
-            v-model="filterStatus"
-            :options="[
-              { label: 'Todos', value: 'ALL' },
-              { label: 'Programados', value: 'SCHEDULED' },
-              { label: 'En curso', value: 'IN_PROGRESS' },
-              { label: 'Finalizados', value: 'FINISHED' },
-            ]"
-            spread
-            no-caps
-            color="primary"
-            toggle-color="primary"
-          />
-        </div>
-
-        <div class="match-toolbar__sort">
-          <q-select
-            v-model="sortMode"
-            :options="[
-              { label: 'Fecha y hora', value: 'date-asc' },
-              { label: 'Más recientes primero', value: 'date-desc' },
-              { label: 'Jornada', value: 'matchday' },
-            ]"
-            emit-value
-            map-options
-            outlined
-            dense
-            label="Ordenar por"
-          />
-        </div>
-      </div>
-
-      <div class="team-matchdays q-mb-lg">
-        <div class="team-matchdays__header">
-          <span class="team-matchdays__title">Jornadas disputadas</span>
-        </div>
-
-        <div class="team-matchdays__grid">
-          <div v-for="item in teamMatchdays" :key="item.team._id" class="team-matchdays__card">
-            <div class="team-matchdays__meta">
-              <div class="team-matchdays__team">{{ item.team.name }}</div>
-              <div class="team-matchdays__count">{{ item.matchdays.length }} / 38 jornadas</div>
+          <!-- STATUS BUTTON TOGGLE -->
+          <div class="col-12 col-md-5">
+            <div class="status-btn-group">
+              <button
+                type="button"
+                class="status-btn"
+                :class="{ 'status-btn--active': filterStatus === 'ALL' }"
+                @click="filterStatus = 'ALL'"
+              >
+                Todos ({{ store.matches.length }})
+              </button>
+              <button
+                type="button"
+                class="status-btn"
+                :class="{ 'status-btn--active': filterStatus === 'SCHEDULED' }"
+                @click="filterStatus = 'SCHEDULED'"
+              >
+                Programados
+              </button>
+              <button
+                type="button"
+                class="status-btn"
+                :class="{ 'status-btn--active': filterStatus === 'IN_PROGRESS' }"
+                @click="filterStatus = 'IN_PROGRESS'"
+              >
+                En Vivo ({{ store.liveMatches.length }})
+              </button>
+              <button
+                type="button"
+                class="status-btn"
+                :class="{ 'status-btn--active': filterStatus === 'FINISHED' }"
+                @click="filterStatus = 'FINISHED'"
+              >
+                Finalizados
+              </button>
             </div>
+          </div>
 
-            <div v-if="item.matchdays.length" class="team-matchdays__chips">
-              <q-chip v-for="matchday in item.matchdays" :key="`${item.team._id}-${matchday}`" size="sm" rounded color="primary" text-color="white">
-                Jornada {{ matchday }}
-              </q-chip>
-            </div>
-            <div v-else class="team-matchdays__empty">Sin jornadas disputadas</div>
+          <!-- SORT SELECT -->
+          <div class="col-12 col-md-3">
+            <q-select
+              v-model="sortMode"
+              :options="[
+                { label: 'Jornada', value: 'matchday' },
+                { label: 'Más recientes primero', value: 'date-desc' },
+                { label: 'Fecha y hora', value: 'date-asc' },
+              ]"
+              emit-value
+              map-options
+              outlined
+              dense
+              stack-label
+              label="Ordenar por"
+            />
           </div>
         </div>
       </div>
 
-      <nav v-if="groupedMatches.length" class="matchday-selector q-mb-lg" aria-label="Ir a una jornada">
-        <a
+      <!-- HORIZONTAL JORNADAS SELECTOR (J1..J38) -->
+      <div class="matchdays-bar-container q-mb-xl">
+        <div class="matchdays-bar-header">
+          <div class="row items-center gap-xs">
+            <q-icon name="calendar_month" color="primary" size="18px" />
+            <span class="matchdays-bar-title">SELECTOR DE JORNADAS</span>
+          </div>
+          <span v-if="activeMatchdayFilter" class="text-caption text-primary cursor-pointer" @click="activeMatchdayFilter = null">
+            Mostrar todas las jornadas
+          </span>
+        </div>
+
+        <div class="matchdays-scroll-row">
+          <button
+            type="button"
+            class="matchday-chip-btn"
+            :class="{ 'matchday-chip-btn--active': activeMatchdayFilter === null }"
+            @click="activeMatchdayFilter = null"
+          >
+            TODAS
+          </button>
+          <button
+            v-for="day in allMatchdayNumbers"
+            :key="`chip-j-${day}`"
+            type="button"
+            class="matchday-chip-btn"
+            :class="{ 'matchday-chip-btn--active': activeMatchdayFilter === day }"
+            @click="selectMatchday(day)"
+          >
+            J{{ day }}
+          </button>
+        </div>
+      </div>
+
+      <!-- JORNADAS DISPUTADAS POR EQUIPO (REGLA 37) -->
+      <div class="rule37-container q-mb-xl">
+        <!-- ENCABEZADO DE SECCIÓN -->
+        <div class="rule37-header q-mb-lg">
+          <div class="rule37-icon-box">
+            <q-icon name="assignment_turned_in" size="22px" />
+          </div>
+          <div>
+            <div class="rule37-title">JORNADAS DISPUTADAS POR EQUIPO</div>
+            <div class="rule37-subtitle">
+              Cómputo en tiempo real derivado exclusivamente de partidos con estado FINALIZADO o EN VIVO.
+            </div>
+          </div>
+        </div>
+
+        <!-- GRID DE TARJETAS DE EQUIPO -->
+        <div class="row q-col-gutter-md">
+          <div
+            v-for="item in teamMatchdays"
+            :key="item.team._id"
+            class="col-12 col-sm-6 col-md-4 col-xl-3"
+          >
+            <div class="rule37-team-card">
+              <!-- TOP: escudo + nombre + contador -->
+              <div class="rule37-card-top">
+                <div class="rule37-crest-ring">
+                  <ImagePreview
+                    :src="item.team.logoUrl"
+                    fallback="/images/default-team.svg"
+                    :alt="item.team.name"
+                    width="38px"
+                    height="38px"
+                  />
+                </div>
+                <div class="rule37-team-info">
+                  <div class="rule37-team-name">{{ item.team.name }}</div>
+                </div>
+                <div class="rule37-count-block">
+                  <span class="rule37-count-value">{{ item.matchdays.length }}</span>
+                  <span class="rule37-count-total">/ 38</span>
+                </div>
+              </div>
+              <!-- PIE: descripción -->
+              <div class="rule37-card-footer">
+                <span v-if="!item.matchdays.length" class="rule37-footer-text">
+                  Sin jornadas jugadas aún
+                </span>
+                <span v-else class="rule37-footer-text">
+                  {{ item.matchdays.length }} partido{{ item.matchdays.length > 1 ? 's' : '' }} jugado{{ item.matchdays.length > 1 ? 's' : '' }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- GROUPED MATCHES PER JORNADA -->
+      <div v-if="groupedMatches.length" class="matchday-groups-list">
+        <div
           v-for="group in groupedMatches"
-          :key="`jump-${group.matchday}`"
-          :href="`#matchday-${group.matchday}`"
-          class="matchday-selector__item"
-          :class="{ 'matchday-selector__item--current': group.isCurrent }"
+          :id="`matchday-${group.matchday}`"
+          :key="group.matchday"
+          class="matchday-group-section q-mb-xl"
         >
-          J{{ group.matchday }}
-        </a>
-      </nav>
-
-      <div v-if="groupedMatches.length" class="match-groups">
-        <div v-for="group in groupedMatches" :id="`matchday-${group.matchday}`" :key="group.matchday" class="match-group">
-          <div class="match-group__header">
-            <span class="match-group__title">Jornada {{ group.matchday }}</span>
-            <q-badge v-if="group.isCurrent" color="primary" rounded class="match-group__badge">Actual</q-badge>
+          <!-- GROUP HEADER -->
+          <div class="matchday-group-header">
+            <div class="row items-center gap-sm">
+              <div class="matchday-header-badge">JORNADA {{ group.matchday }}</div>
+              <span class="matchday-matches-count">{{ group.matches.length }} partido{{ group.matches.length > 1 ? 's' : '' }}</span>
+            </div>
+            <q-badge v-if="group.isCurrent" color="primary" rounded class="text-weight-bold">
+              JORNADA ACTUAL
+            </q-badge>
           </div>
 
-          <div class="match-grid">
-            <MatchSummaryCard v-for="match in group.matches" :key="match._id" :match="match" />
+          <!-- MATCHES GRID -->
+          <div class="row q-col-gutter-lg">
+            <div
+              v-for="match in group.matches"
+              :key="match._id"
+              class="col-12 col-md-6 col-xl-4"
+            >
+              <MatchSummaryCard :match="match" />
+            </div>
           </div>
         </div>
       </div>
 
-      <q-card v-else flat bordered class="q-pa-xl text-center">
-        <q-icon name="event_busy" color="grey-6" size="3rem" />
-        <div class="text-h6 q-mt-md">No hay partidos para este filtro</div>
-        <div class="text-body2 text-grey-7 q-mt-sm">Prueba con otra búsqueda o cambia el filtro.</div>
+      <!-- EMPTY STATE -->
+      <q-card v-else flat class="sports-panel-card q-pa-xl text-center">
+        <q-icon name="event_busy" color="grey-6" size="48px" />
+        <div class="text-h6 text-weight-bold q-mt-md">No se encontraron partidos</div>
+        <div class="text-body2 text-grey-5 q-mt-xs">Prueba seleccionando otro filtro o limpiando el buscador.</div>
       </q-card>
     </div>
 
+    <!-- SCHEDULE MATCH MODAL DIALOG -->
     <q-dialog v-model="dialog" persistent>
-      <q-card class="match-dialog">
-        <q-card-section>
-          <div class="row items-center q-gutter-sm">
-            <q-icon name="sports_soccer" color="positive" size="1.5rem" />
-            <div class="text-h6">Programar partido</div>
+      <q-card class="schedule-dialog-card">
+        <!-- DIALOG HEADER -->
+        <q-card-section class="dialog-header-section">
+          <div class="row items-center justify-between">
+            <div class="row items-center gap-sm">
+              <div class="header-logo-badge">
+                <q-icon name="event" size="22px" />
+              </div>
+              <div>
+                <div class="text-h6 text-weight-bold">Programar Partido</div>
+                <div class="text-caption text-grey-5">Configuración de nuevo encuentro del torneo</div>
+              </div>
+            </div>
+            <q-btn flat round dense icon="close" color="grey-5" @click="dialog = false" />
           </div>
-          <div class="text-caption text-grey-7">Selecciona ambos equipos para comparar jornadas disponibles.</div>
         </q-card-section>
 
-        <q-form class="q-gutter-md q-pa-md" @submit.prevent="scheduleMatch">
-          <q-select
-            v-model="form.homeTeam"
-            :options="teamOptions"
-            emit-value
-            map-options
-            label="Equipo local"
-            outlined
-            required
-          />
-          <q-select
-            v-model="form.awayTeam"
-            :options="teamOptions"
-            emit-value
-            map-options
-            label="Equipo visitante"
-            outlined
-            required
-          />
+        <!-- FORM BODY -->
+        <q-form class="q-pa-lg q-gutter-y-lg" @submit.prevent="scheduleMatch">
+          <div class="row q-col-gutter-md">
+            <div class="col-12 col-sm-6">
+              <q-select
+                v-model="form.homeTeam"
+                :options="teamOptions"
+                emit-value
+                map-options
+                label="Equipo Local"
+                outlined
+                stack-label
+                required
+              />
+            </div>
+            <div class="col-12 col-sm-6">
+              <q-select
+                v-model="form.awayTeam"
+                :options="teamOptions"
+                emit-value
+                map-options
+                label="Equipo Visitante"
+                outlined
+                stack-label
+                required
+              />
+            </div>
+          </div>
 
-          <div v-if="form.homeTeam && form.awayTeam && form.homeTeam !== form.awayTeam">
-            <div class="text-subtitle2 text-weight-medium q-mb-sm">Historial de jornadas</div>
-            <div class="matchday-compare-wrapper">
-              <div class="matchday-compare-table">
-                <div class="matchday-compare-row matchday-compare-row--header">
-                  <div class="matchday-compare-team">Jornada</div>
-                  <div class="matchday-compare-days">
-                    <div v-for="day in matchdayComparison" :key="`header-${day.value}`" class="matchday-compare-cell matchday-compare-cell--header">
-                      <span>{{ day.label }}</span>
+          <!-- COMPARISON MATRIX IF BOTH TEAMS SELECTED -->
+          <div v-if="form.homeTeam && form.awayTeam && form.homeTeam !== form.awayTeam" class="comparison-block">
+            <div class="text-subtitle2 text-weight-bold q-mb-xs text-white">
+              Historial y Disponibilidad de Jornadas
+            </div>
+            <div class="text-caption text-grey-5 q-mb-sm">
+              Comprueba qué jornadas ya han jugado ambos equipos para evitar duplicados.
+            </div>
+
+            <!-- COMPARISON TABLE SCROLL -->
+            <div class="comparison-table-wrapper">
+              <div class="comp-matrix-table">
+                <!-- ROW 1: HEADER -->
+                <div class="comp-row comp-row--head">
+                  <div class="comp-team-cell">Equipo / Jornada</div>
+                  <div class="comp-days-track">
+                    <div v-for="d in matchdayComparison" :key="`head-${d.value}`" class="comp-day-head">
+                      {{ d.label }}
                     </div>
                   </div>
                 </div>
 
-                <div class="matchday-compare-row">
-                  <div class="matchday-compare-team">{{ getTeamName(form.homeTeam) }}</div>
-                  <div class="matchday-compare-days">
+                <!-- ROW 2: HOME TEAM -->
+                <div class="comp-row">
+                  <div class="comp-team-cell text-weight-bold">
+                    {{ getTeamName(form.homeTeam) }}
+                  </div>
+                  <div class="comp-days-track">
                     <div
-                      v-for="day in matchdayComparison"
-                      :key="`home-${day.value}`"
-                      class="matchday-compare-cell"
+                      v-for="d in matchdayComparison"
+                      :key="`h-${d.value}`"
+                      class="comp-cell"
                       :class="{
-                        'matchday-compare-cell--selected': day.selected,
-                        'matchday-compare-cell--done': day.homeDisputed,
-                        'matchday-compare-cell--available': !day.homeDisputed && !day.awayDisputed,
-                        'matchday-compare-cell--blocked': !day.homeDisputed && day.awayDisputed,
+                        'comp-cell--done': d.homeDisputed,
+                        'comp-cell--available': !d.homeDisputed && !d.awayDisputed,
+                        'comp-cell--blocked': !d.homeDisputed && d.awayDisputed,
+                        'comp-cell--selected': d.selected,
                       }"
                     >
-                      {{ day.homeDisputed ? '✓' : '○' }}
+                      {{ d.homeDisputed ? '✔' : '○' }}
                     </div>
                   </div>
                 </div>
 
-                <div class="matchday-compare-row">
-                  <div class="matchday-compare-team">{{ getTeamName(form.awayTeam) }}</div>
-                  <div class="matchday-compare-days">
+                <!-- ROW 3: AWAY TEAM -->
+                <div class="comp-row">
+                  <div class="comp-team-cell text-weight-bold">
+                    {{ getTeamName(form.awayTeam) }}
+                  </div>
+                  <div class="comp-days-track">
                     <div
-                      v-for="day in matchdayComparison"
-                      :key="`away-${day.value}`"
-                      class="matchday-compare-cell"
+                      v-for="d in matchdayComparison"
+                      :key="`a-${d.value}`"
+                      class="comp-cell"
                       :class="{
-                        'matchday-compare-cell--selected': day.selected,
-                        'matchday-compare-cell--done': day.awayDisputed,
-                        'matchday-compare-cell--available': !day.homeDisputed && !day.awayDisputed,
-                        'matchday-compare-cell--blocked': day.homeDisputed && !day.awayDisputed,
+                        'comp-cell--done': d.awayDisputed,
+                        'comp-cell--available': !d.homeDisputed && !d.awayDisputed,
+                        'comp-cell--blocked': d.homeDisputed && !d.awayDisputed,
+                        'comp-cell--selected': d.selected,
                       }"
                     >
-                      {{ day.awayDisputed ? '✓' : '○' }}
+                      {{ d.awayDisputed ? '✔' : '○' }}
                     </div>
                   </div>
                 </div>
               </div>
             </div>
 
+            <!-- AVAILABLE MATCHDAYS BUTTON SELECTION -->
             <div class="q-mt-md">
-              <div class="text-subtitle2 text-weight-medium q-mb-sm">Jornadas disponibles para ambos</div>
-              <div v-if="availableMatchdays.length" class="matchday-grid">
+              <div class="text-subtitle2 text-weight-bold text-white q-mb-sm">
+                Selecciona la Jornada Oficial
+              </div>
+              <div v-if="availableMatchdays.length" class="available-days-grid">
                 <button
                   v-for="day in availableMatchdays"
-                  :key="day"
+                  :key="`avail-${day}`"
                   type="button"
-                  class="matchday-card"
-                  :class="{ 'matchday-card--selected': form.matchday === day }"
-                  :aria-pressed="form.matchday === day"
+                  class="day-card-btn"
+                  :class="{ 'day-card-btn--selected': form.matchday === day }"
                   @click="form.matchday = day"
                 >
-                  <span class="matchday-card__badge" v-if="form.matchday === day">✓</span>
-                  <span class="matchday-card__title">Jornada {{ day }}</span>
-                  <span class="matchday-card__status">{{ form.matchday === day ? 'Seleccionada' : 'Disponible' }}</span>
+                  <span class="day-card-title">Jornada {{ day }}</span>
+                  <span class="day-card-sub">{{ form.matchday === day ? 'Seleccionada ✔' : 'Disponible' }}</span>
                 </button>
               </div>
-              <div v-else class="text-caption text-grey-7">No hay jornadas disponibles para ambos equipos en este momento.</div>
+              <div v-else class="text-caption text-negative">
+                No hay jornadas libres simultáneamente para estos dos equipos.
+              </div>
             </div>
           </div>
 
           <div v-else-if="form.homeTeam && form.awayTeam && form.homeTeam === form.awayTeam" class="text-caption text-negative">
-            El equipo local y el visitante deben ser distintos.
+            El equipo local y el visitante deben ser diferentes.
           </div>
 
-          <div v-else class="text-caption text-grey-7">
-            Selecciona ambos equipos para comparar las jornadas disponibles.
+          <!-- SEPARATED FIELDS: FECHA, HORA, CANCHA, ÁRBITRO -->
+          <div class="row q-col-gutter-md">
+            <div class="col-12 col-sm-6">
+              <q-input
+                v-model="form.matchDate"
+                type="date"
+                label="Fecha del Partido *"
+                outlined
+                required
+                stack-label
+              >
+                <template #prepend>
+                  <q-icon name="event" />
+                </template>
+              </q-input>
+            </div>
+            <div class="col-12 col-sm-6">
+              <q-input
+                v-model="form.matchTime"
+                type="time"
+                label="Hora del Partido *"
+                outlined
+                required
+                stack-label
+              >
+                <template #prepend>
+                  <q-icon name="schedule" />
+                </template>
+              </q-input>
+            </div>
           </div>
 
-          <div v-if="!form.matchday && form.homeTeam && form.awayTeam && form.homeTeam !== form.awayTeam" class="text-caption text-negative q-mt-sm">
-            Debes elegir una jornada disponible para continuar.
+          <div class="row q-col-gutter-md">
+            <div class="col-12 col-sm-6">
+              <q-input
+                v-model="form.stadium"
+                label="Cancha / Sede"
+                placeholder="Cancha Principal"
+                outlined
+                stack-label
+              >
+                <template #prepend>
+                  <q-icon name="stadium" />
+                </template>
+              </q-input>
+            </div>
+            <div class="col-12 col-sm-6">
+              <q-input
+                v-model="form.referee"
+                label="Árbitro Principal"
+                placeholder="Ej: Carlos Silva"
+                outlined
+                stack-label
+              >
+                <template #prepend>
+                  <q-icon name="sports" />
+                </template>
+              </q-input>
+            </div>
           </div>
 
-          <q-input v-model="form.date" type="datetime-local" label="Fecha y hora" outlined required />
-
-          <div class="row justify-end q-gutter-sm">
-            <q-btn flat label="Cancelar" color="grey-7" @click="dialog = false" />
-            <q-btn type="submit" label="Programar" color="primary" :loading="saving" :disable="!form.matchday" />
+          <!-- ACTIONS -->
+          <div class="row justify-end q-gutter-sm q-pt-sm">
+            <q-btn flat label="Cancelar" color="grey-5" @click="dialog = false" />
+            <q-btn
+              type="submit"
+              label="Guardar y Programar"
+              color="primary"
+              :loading="saving"
+              :disable="!form.matchday || !form.homeTeam || !form.awayTeam || form.homeTeam === form.awayTeam"
+            />
           </div>
         </q-form>
       </q-card>
@@ -538,425 +728,432 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.page-header {
+.matches-page {
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Toolbar */
+.sports-toolbar {
+  background: var(--tb-surface);
+  border: 1px solid var(--tb-border);
+  border-radius: var(--tb-radius-md);
+  padding: 16px 20px;
+}
+
+.status-btn-group {
+  display: flex;
+  background: var(--tb-surface-raised);
+  border: 1px solid var(--tb-border);
+  border-radius: var(--tb-radius-md);
+  padding: 3px;
+  overflow-x: auto;
+}
+
+.status-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--tb-muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 8px 10px;
+  border-radius: var(--tb-radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.status-btn:hover {
+  color: #ffffff;
+}
+
+.status-btn--active {
+  background: var(--tb-surface);
+  color: var(--tb-primary);
+  border: 1px solid var(--tb-border);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Horizontal Matchdays Bar */
+.matchdays-bar-container {
+  background: var(--tb-surface);
+  border: 1px solid var(--tb-border);
+  border-radius: var(--tb-radius-md);
+  padding: 16px 20px;
+}
+
+.matchdays-bar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  padding: 18px 20px;
-  border: 1px solid rgba(17, 24, 39, 0.06);
-  border-radius: 8px;
-  background: linear-gradient(135deg, rgba(26, 90, 63, 0.06), rgba(255, 255, 255, 0.9));
-  box-shadow: 0 10px 24px rgba(13, 56, 37, 0.04);
+  margin-bottom: 12px;
 }
 
-.page-header__title-block {
+.matchdays-bar-title {
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffffff;
+}
+
+.matchdays-scroll-row {
   display: flex;
-  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.matchday-chip-btn {
+  flex-shrink: 0;
+  background: var(--tb-surface-raised);
+  border: 1px solid var(--tb-border);
+  color: var(--tb-text-secondary);
+  font-size: 0.76rem;
+  font-weight: 800;
+  padding: 6px 14px;
+  border-radius: var(--tb-radius-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.matchday-chip-btn:hover {
+  border-color: var(--tb-primary);
+  color: #ffffff;
+}
+
+.matchday-chip-btn--active {
+  background: var(--tb-primary) !important;
+  border-color: var(--tb-primary) !important;
+  color: #0b111e !important;
+  box-shadow: 0 0 12px var(--tb-primary-glow);
+}
+
+/* ===== MÓDULO JORNADAS DISPUTADAS — REGLA 37 ===== */
+.rule37-container {
+  background: #161f30;
+  border: 1px solid #2a374a;
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.rule37-header {
+  display: flex;
+  align-items: flex-start;
   gap: 14px;
 }
 
-.page-header__icon {
-  display: inline-flex;
+.rule37-icon-box {
+  display: flex;
   align-items: center;
   justify-content: center;
   width: 46px;
   height: 46px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, #1d5f41, #2ca36d);
+  min-width: 46px;
+  background: #3b82f6;
+  border-radius: 10px;
   color: #ffffff;
-  box-shadow: 0 12px 24px rgba(29, 95, 65, 0.22);
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.35);
+  flex-shrink: 0;
 }
 
-.page-header__eyebrow {
-  margin: 0 0 4px;
-  font-size: 0.73rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #5a6f67;
+.rule37-title {
+  font-size: 1.05rem;
   font-weight: 800;
+  color: #ffffff;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  line-height: 1.2;
 }
 
-.page-header__title {
-  margin: 0;
-  font-size: 28px;
-  font-weight: 900;
-  letter-spacing: 0;
-  color: #112a1e;
+.rule37-subtitle {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  margin-top: 5px;
+  line-height: 1.45;
 }
 
-.page-header__cta {
-  min-height: 44px;
-  border-radius: 8px;
-  font-weight: 700;
-}
-
-.match-dialog {
-  width: 92vw;
-  max-width: 760px;
-}
-
-.match-page {
+/* Tarjeta individual de equipo */
+.rule37-team-card {
+  background: #0b111e;
+  border: 1px solid #2a374a;
+  border-radius: 10px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
-  padding: 6px 0 8px;
+  gap: 12px;
+  height: 100%;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.match-toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.7fr) minmax(200px, 0.8fr);
-  gap: 16px;
+.rule37-team-card:hover {
+  border-color: #10b981;
+  box-shadow: 0 0 18px rgba(16, 185, 129, 0.18);
+}
+
+.rule37-card-top {
+  display: flex;
   align-items: center;
-  padding: 18px 18px 14px;
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(17, 24, 39, 0.05);
-  border-radius: 8px;
-  box-shadow: 0 8px 20px rgba(13, 56, 37, 0.03);
+  gap: 10px;
 }
 
-.match-toolbar__search :deep(.q-field__control),
-.match-toolbar__sort :deep(.q-field__control) {
-  border-radius: 14px;
-}
-
-.match-toolbar__search :deep(.q-field__marginal),
-.match-toolbar__sort :deep(.q-field__marginal) {
-  color: #2d5c4d;
-}
-
-.match-toolbar__filters :deep(.q-btn-group) {
-  width: 100%;
-  border-radius: 14px;
-  background: rgba(240, 246, 243, 0.9);
-  border: 1px solid rgba(17, 24, 39, 0.04);
-  overflow: hidden;
-}
-
-.match-toolbar__filters :deep(.q-btn) {
-  min-height: 42px;
-  font-size: 0.76rem;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-}
-
-.match-toolbar__filters :deep(.q-btn--active) {
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.18);
-}
-
-.match-groups {
-  display: flex;
-  flex-direction: column;
-  gap: 30px;
-}
-
-.matchday-selector {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 2px 0 8px;
-  scroll-behavior: smooth;
-}
-
-.matchday-selector__item {
+.rule37-crest-ring {
   display: inline-flex;
-  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  min-width: 42px;
-  height: 36px;
-  border: 1px solid #2a374a;
-  border-radius: 6px;
-  background: #161f30;
-  color: #cbd5e1;
-  font-size: 0.76rem;
-  font-weight: 800;
-  text-decoration: none;
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  border-radius: 50%;
+  border: 2px solid #10b981;
+  box-shadow: 0 0 14px rgba(16, 185, 129, 0.3);
+  background: #0b111e;
+  overflow: hidden;
+  padding: 4px;
+  box-sizing: border-box;
 }
 
-.matchday-selector__item--current {
-  border-color: #10b981;
-  background: #10b981;
-  color: #0b111e;
+.rule37-crest-ring img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
 }
 
-.match-group {
+.rule37-team-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.rule37-team-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rule37-count-block {
   display: flex;
-  flex-direction: column;
-  gap: 18px;
-  scroll-margin-top: 84px;
+  align-items: baseline;
+  gap: 3px;
+  flex-shrink: 0;
 }
 
-.match-group__header {
+.rule37-count-value {
+  font-size: 1.65rem;
+  font-weight: 900;
+  color: #10b981;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.rule37-count-total {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.rule37-card-footer {
+  border-top: 1px solid #2a374a;
+  padding-top: 10px;
+}
+
+.rule37-footer-text {
+  font-size: 0.78rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+
+/* Matchday Groups */
+.matchday-group-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 14px 18px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #edf6f2 0%, #f5faf7 100%);
-  border: 1px solid rgba(17, 24, 39, 0.06);
-  box-shadow: 0 6px 18px rgba(13, 56, 37, 0.02);
+  padding: 12px 18px;
+  background: var(--tb-surface);
+  border: 1px solid var(--tb-border);
+  border-radius: var(--tb-radius-md);
+  margin-bottom: 16px;
 }
 
-.match-group__title {
-  font-size: 0.82rem;
+.matchday-header-badge {
+  font-size: 0.84rem;
   font-weight: 900;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #1d5f41;
-}
-
-.match-group__badge {
-  font-size: 0.7rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
+  color: var(--tb-primary);
   text-transform: uppercase;
 }
 
-.match-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
-  gap: 20px;
+.matchday-matches-count {
+  font-size: 0.72rem;
+  color: var(--tb-muted);
+  font-weight: 600;
 }
 
-.matchday-compare-wrapper {
+/* Modal Dialog */
+.schedule-dialog-card {
+  width: 94vw;
+  max-width: 780px;
+  background: var(--tb-surface) !important;
+  border: 1px solid var(--tb-border);
+  border-radius: var(--tb-radius-lg);
+  color: #ffffff;
+}
+
+.dialog-header-section {
+  border-bottom: 1px solid var(--tb-border);
+  padding: 20px 24px;
+}
+
+.comparison-block {
+  background: var(--tb-surface-raised);
+  border: 1px solid var(--tb-border);
+  border-radius: var(--tb-radius-md);
+  padding: 16px;
+}
+
+.comparison-table-wrapper {
   overflow-x: auto;
-  padding-bottom: 8px;
 }
 
-.matchday-compare-table {
-  min-width: 1000px;
-  width: 100%;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 8px;
+.comp-matrix-table {
+  min-width: 900px;
+  border: 1px solid var(--tb-border);
+  border-radius: var(--tb-radius-sm);
+  background: var(--tb-surface);
   overflow: hidden;
-  background: #f8faf9;
 }
 
-.matchday-compare-row {
+.comp-row {
   display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
+  grid-template-columns: 160px 1fr;
   align-items: stretch;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid var(--tb-border);
 }
 
-.matchday-compare-row:last-child {
+.comp-row:last-child {
   border-bottom: none;
 }
 
-.matchday-compare-row--header {
-  background: #eef6f2;
+.comp-row--head {
+  background: var(--tb-surface-raised);
 }
 
-.matchday-compare-team {
-  min-width: 180px;
-  padding: 12px 14px;
-  font-weight: 700;
+.comp-team-cell {
+  padding: 10px 14px;
+  font-size: 0.8rem;
+  color: #ffffff;
   display: flex;
   align-items: center;
-  background: rgba(255, 255, 255, 0.4);
-  border-right: 1px solid rgba(0, 0, 0, 0.06);
+  border-right: 1px solid var(--tb-border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.matchday-compare-days {
+.comp-days-track {
   display: grid;
-  grid-template-columns: repeat(38, minmax(56px, 1fr));
-  min-width: 100%;
+  grid-template-columns: repeat(38, minmax(42px, 1fr));
 }
 
-.matchday-compare-cell {
-  min-width: 0;
-  min-height: 52px;
+.comp-day-head {
+  padding: 8px 4px;
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: var(--tb-muted);
+  border-right: 1px solid var(--tb-border);
+}
+
+.comp-cell {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-right: 1px solid rgba(0, 0, 0, 0.05);
-  font-weight: 800;
-  color: #45514c;
-  background: #fff;
-  padding: 6px;
-  text-align: center;
-}
-
-.matchday-compare-cell:last-child {
-  border-right: none;
-}
-
-.matchday-compare-cell--header {
   font-size: 0.72rem;
-  line-height: 1.2;
-  background: #eef6f2;
-  color: #4f6059;
-  min-height: 64px;
+  font-weight: 800;
+  border-right: 1px solid var(--tb-border);
+  min-height: 40px;
+  color: var(--tb-muted);
 }
 
-.matchday-compare-cell--done {
-  background: #eafaf1;
-  color: #1e8b5f;
+.comp-cell--done {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
 }
 
-.matchday-compare-cell--available {
-  background: #f4f8ff;
-  color: #314f72;
+.comp-cell--available {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
 }
 
-.matchday-compare-cell--blocked {
-  background: #f3f4f6;
-  color: #6b7280;
+.comp-cell--blocked {
+  background: rgba(15, 23, 42, 0.7);
+  color: #64748b;
 }
 
-.matchday-compare-cell--selected {
-  background: linear-gradient(135deg, #ecfdf5 0%, #d8f4e7 100%);
-  color: #0f5132;
-  box-shadow: inset 0 0 0 1px rgba(31, 157, 104, 0.18);
+.comp-cell--selected {
+  background: var(--tb-primary) !important;
+  color: #0b111e !important;
 }
 
-.matchday-grid {
+/* Available Days Grid */
+.available-days-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 4px;
 }
 
-.matchday-card {
-  position: relative;
-  border: 1px solid #dfe7e1;
-  border-radius: 8px;
-  background: #f8faf9;
-  padding: 16px 12px 14px;
+.day-card-btn {
+  background: var(--tb-surface);
+  border: 1px solid var(--tb-border);
+  border-radius: var(--tb-radius-sm);
+  padding: 10px 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 104px;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: all 0.15s ease;
 }
 
-.matchday-card:hover {
-  transform: translateY(-1px);
-  border-color: #a7d2b8;
-  box-shadow: 0 10px 20px rgba(13, 56, 37, 0.08);
+.day-card-btn:hover {
+  border-color: var(--tb-primary);
+  background: var(--tb-surface-hover);
 }
 
-.matchday-card--selected {
-  background: linear-gradient(135deg, #147d4a 0%, #1f9d68 100%);
-  border-color: #147d4a;
-  box-shadow: 0 16px 26px rgba(20, 125, 74, 0.22);
+.day-card-btn--selected {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+  border-color: #10b981 !important;
 }
 
-.matchday-card__badge {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.16);
-  color: #ffffff;
-  font-size: 0.82rem;
+.day-card-title {
+  font-size: 0.85rem;
   font-weight: 800;
-}
-
-.matchday-card__title {
-  font-size: 0.94rem;
-  font-weight: 800;
-  color: #1f2d29;
-  text-align: center;
-}
-
-.matchday-card--selected .matchday-card__title {
   color: #ffffff;
 }
 
-.matchday-card__status {
-  margin-top: 8px;
-  font-size: 0.7rem;
+.day-card-btn--selected .day-card-title {
+  color: #0b111e;
+}
+
+.day-card-sub {
+  font-size: 0.65rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #1d5f41;
+  color: var(--tb-muted);
+  margin-top: 2px;
 }
 
-.matchday-card--selected .matchday-card__status {
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.team-matchdays {
-  margin-top: 12px;
-}
-
-.team-matchdays__header {
-  margin-bottom: 14px;
-}
-
-.team-matchdays__title {
-  font-size: 0.8rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  font-weight: 800;
-  color: #29453a;
-}
-
-.team-matchdays__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-}
-
-.team-matchdays__card {
-  background: #ffffff;
-  border: 1px solid rgba(17, 24, 39, 0.06);
-  border-radius: 8px;
-  padding: 16px 14px;
-  box-shadow: 0 8px 20px rgba(18, 61, 44, 0.03);
-}
-
-.team-matchdays__meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.team-matchdays__team {
-  font-weight: 800;
-  color: #183126;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.team-matchdays__count {
-  font-size: 0.72rem;
-  color: #53615b;
-  font-weight: 700;
-}
-
-.team-matchdays__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.team-matchdays__empty {
-  color: #66756f;
-  font-size: 0.8rem;
-}
-
-@media (max-width: 768px) {
-  .match-toolbar {
-    grid-template-columns: 1fr;
-  }
-
-  .match-grid {
-    grid-template-columns: 1fr;
-  }
+.day-card-btn--selected .day-card-sub {
+  color: #0b111e;
 }
 </style>
-

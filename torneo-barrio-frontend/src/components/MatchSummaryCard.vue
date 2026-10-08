@@ -1,6 +1,12 @@
 <script setup>
 import { computed } from 'vue'
-import { formatMatchDate, getId, matchStatusColor, matchStatusLabel, normalizeMatchStatus } from '@/utils/matchFormatting'
+import {
+  formatMatchDate,
+  getId,
+  matchStatusColor,
+  matchStatusLabel,
+  normalizeMatchStatus,
+} from '@/utils/matchFormatting'
 import ImagePreview from '@/components/ImagePreview.vue'
 import { useTournamentStore } from '@/stores/tournament'
 
@@ -20,12 +26,24 @@ const getPlayerName = (player) => {
   return store.players.find((item) => item._id === id)?.name || 'Jugador'
 }
 
+const statusNormalized = computed(() => normalizeMatchStatus(props.match.status))
+const isLive = computed(() => statusNormalized.value === 'IN_PROGRESS')
+const isFinished = computed(() => statusNormalized.value === 'FINISHED')
+const isScheduled = computed(() => statusNormalized.value === 'SCHEDULED')
+
+const matchTimeFormatted = computed(() => {
+  const date = new Date(props.match.date)
+  if (Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit' }).format(date)
+})
+
 const matchGoals = computed(() => {
   const homeId = getId(props.match.homeTeam)
   const awayId = getId(props.match.awayTeam)
-  const homeScorers = []
-  const awayScorers = []
+  const homeEvents = []
+  const awayEvents = []
 
+  // Goles
   for (const goal of props.match.goals || []) {
     const teamId = getId(goal.team)
     const entry = {
@@ -36,14 +54,15 @@ const matchGoals = computed(() => {
     }
 
     if (teamId === homeId) {
-      homeScorers.push(entry)
+      homeEvents.push(entry)
     } else if (teamId === awayId) {
-      awayScorers.push(entry)
+      awayEvents.push(entry)
     }
   }
 
+  // Tarjetas e incidencias
   for (const event of props.match.events || []) {
-    if (!['YELLOW_CARD', 'RED_CARD'].includes(event.type)) continue
+    if (!['YELLOW_CARD', 'RED_CARD', 'OWN_GOAL'].includes(event.type)) continue
 
     const entry = {
       player: getPlayerName(event.player),
@@ -53,266 +72,439 @@ const matchGoals = computed(() => {
     const teamId = getId(event.team)
 
     if (teamId === homeId) {
-      homeScorers.push(entry)
+      homeEvents.push(entry)
     } else if (teamId === awayId) {
-      awayScorers.push(entry)
+      awayEvents.push(entry)
     }
   }
 
-  return { home: homeScorers.sort((a, b) => a.minute - b.minute), away: awayScorers.sort((a, b) => a.minute - b.minute) }
+  return {
+    home: homeEvents.sort((a, b) => a.minute - b.minute),
+    away: awayEvents.sort((a, b) => a.minute - b.minute),
+  }
 })
 </script>
 
 <template>
-  <router-link :to="{ name: 'match-detail', params: { id: match._id } }" class="match-link">
-    <q-card flat class="match-card">
-      <q-card-section class="match-card__body">
-        <div class="match-card__header">
-          <div class="match-card__context">
-            <q-badge v-if="match.matchday" color="positive" text-color="dark" rounded>
-              Jornada {{ match.matchday }}
-            </q-badge>
-            <span v-if="match.homeTeam?.stadium">{{ match.homeTeam.stadium }}</span>
-          </div>
-          <q-badge :color="matchStatusColor(match.status)" rounded class="match-card__status">
-            {{ matchStatusLabel(match.status) }}
-          </q-badge>
-        </div>
-
-        <div class="match-card__topline">
-          <div class="match-card__team match-card__team--home">
-            <ImagePreview
-              :src="match.homeTeam?.logoUrl"
-              fallback="/images/default-team.svg"
-              :alt="`Escudo de ${match.homeTeam?.name || 'equipo local'}`"
-              width="42px"
-              height="42px"
-              class="match-card__crest"
-            />
-            <div class="match-card__team-meta">
-              <span class="match-card__team-name">{{ match.homeTeam?.name || 'Local' }}</span>
-              <span class="match-card__team-role">Local</span>
+  <router-link :to="{ name: 'match-detail', params: { id: match._id } }" class="match-card-link">
+    <q-card flat class="sports-match-card">
+      <q-card-section class="sports-match-card__body">
+        <!-- CARD HEADER -->
+        <div class="sports-match-card__header">
+          <div class="sports-match-card__context">
+            <span v-if="match.matchday" class="matchday-badge">
+              JORNADA {{ match.matchday }}
+            </span>
+            <div class="stadium-info">
+              <q-icon name="place" size="14px" class="q-mr-xs text-grey-5" />
+              <span>{{ match.homeTeam?.stadium || 'Cancha Local' }}</span>
             </div>
           </div>
 
-          <div class="match-card__center">
-            <div class="match-card__status-text">{{ matchStatusLabel(match.status) }}</div>
-            <div class="match-card__date">{{ formatMatchDate(match.date) }}</div>
-            <div v-if="normalizeMatchStatus(match.status) === 'SCHEDULED'" class="match-card__score match-card__score--scheduled">VS</div>
-            <div v-else class="match-card__score">
-              {{ match.homeScore ?? 0 }} <span>–</span> {{ match.awayScore ?? 0 }}
-            </div>
+          <!-- STATUS BADGE -->
+          <div v-if="isLive" class="status-live-badge">
+            <span class="live-dot-pulse"></span>
+            <span>🔴 EN VIVO</span>
           </div>
-
-          <div class="match-card__team match-card__team--away">
-            <div class="match-card__team-meta match-card__team-meta--right">
-              <span class="match-card__team-name">{{ match.awayTeam?.name || 'Visitante' }}</span>
-              <span class="match-card__team-role">Visitante</span>
-            </div>
-            <ImagePreview
-              :src="match.awayTeam?.logoUrl"
-              fallback="/images/default-team.svg"
-              :alt="`Escudo de ${match.awayTeam?.name || 'equipo visitante'}`"
-              width="42px"
-              height="42px"
-              class="match-card__crest"
-            />
+          <div v-else-if="isFinished" class="status-finished-badge">
+            <q-icon name="check_circle" size="13px" class="q-mr-xs" />
+            <span>FINALIZADO</span>
+          </div>
+          <div v-else class="status-scheduled-badge">
+            <q-icon name="schedule" size="13px" class="q-mr-xs" />
+            <span>PROGRAMADO</span>
           </div>
         </div>
 
-        <div class="match-card__scorers" v-if="matchGoals.home.length || matchGoals.away.length">
-          <div class="match-card__scorer-column">
-            <div v-for="goal in matchGoals.home" :key="`home-${goal.player}-${goal.minute}`" class="match-card__scorer-item">
-              <span class="match-card__goal-icon">{{ goal.type === 'RED_CARD' ? '🟥' : goal.type === 'YELLOW_CARD' ? '🟨' : '⚽' }}</span>
-              <span>{{ goal.player }} {{ goal.minute }}'</span>
+        <!-- CARD CENTER: 3-COLUMN HORIZONTAL MATCH LAYOUT -->
+        <div class="sports-match-card__content">
+          <!-- LOCAL TEAM -->
+          <div class="match-team match-team--home">
+            <div class="sport-crest-container match-team__crest-box">
+              <ImagePreview
+                :src="match.homeTeam?.logoUrl"
+                fallback="/images/default-team.svg"
+                :alt="`Escudo de ${match.homeTeam?.name || 'Local'}`"
+                width="48px"
+                height="48px"
+                class="match-team__crest"
+              />
+            </div>
+            <div class="match-team__info">
+              <span class="match-team__name">{{ match.homeTeam?.name || 'Local' }}</span>
+              <span class="match-team__role">LOCAL</span>
             </div>
           </div>
 
-          <div class="match-card__scorer-column match-card__scorer-column--away">
-            <div v-for="goal in matchGoals.away" :key="`away-${goal.player}-${goal.minute}`" class="match-card__scorer-item">
-              <span>{{ goal.player }} {{ goal.minute }}'</span>
-              <span class="match-card__goal-icon">{{ goal.type === 'RED_CARD' ? '🟥' : goal.type === 'YELLOW_CARD' ? '🟨' : '⚽' }}</span>
+          <!-- CENTER SCORE BOX -->
+          <div class="match-center-score">
+            <div v-if="isScheduled" class="score-box-scheduled">
+              <div class="score-vs">VS</div>
+              <div v-if="matchTimeFormatted" class="score-time">{{ matchTimeFormatted }}</div>
+            </div>
+            <div v-else class="score-box-active">
+              <span class="score-digit">{{ match.homeScore ?? 0 }}</span>
+              <span class="score-separator">-</span>
+              <span class="score-digit">{{ match.awayScore ?? 0 }}</span>
+            </div>
+
+            <div class="match-date-label">
+              {{ formatMatchDate(match.date) }}
+            </div>
+          </div>
+
+          <!-- AWAY TEAM -->
+          <div class="match-team match-team--away">
+            <div class="sport-crest-container match-team__crest-box">
+              <ImagePreview
+                :src="match.awayTeam?.logoUrl"
+                fallback="/images/default-team.svg"
+                :alt="`Escudo de ${match.awayTeam?.name || 'Visitante'}`"
+                width="48px"
+                height="48px"
+                class="match-team__crest"
+              />
+            </div>
+            <div class="match-team__info">
+              <span class="match-team__name">{{ match.awayTeam?.name || 'Visitante' }}</span>
+              <span class="match-team__role">VISITANTE</span>
             </div>
           </div>
         </div>
 
-        <div v-else class="match-card__no-goals">Sin goles registrados</div>
+        <!-- INCIDENTS / GOALS TIMELINE -->
+        <div class="sports-match-card__events" v-if="matchGoals.home.length || matchGoals.away.length">
+          <!-- HOME EVENTS -->
+          <div class="events-col events-col--home">
+            <div
+              v-for="item in matchGoals.home"
+              :key="`home-${item.player}-${item.minute}`"
+              class="event-tag event-tag--home"
+            >
+              <span class="event-icon">{{ item.type === 'RED_CARD' ? '🟥' : item.type === 'YELLOW_CARD' ? '🟨' : item.type === 'OWN_GOAL' ? '⚽' : '⚽' }}</span>
+              <span class="event-desc" :class="{ 'text-negative': item.type === 'OWN_GOAL' }">
+                {{ item.minute }}' {{ item.player }}{{ item.type === 'OWN_GOAL' ? ' (AG)' : '' }}
+              </span>
+            </div>
+          </div>
+
+          <!-- AWAY EVENTS -->
+          <div class="events-col events-col--away">
+            <div
+              v-for="item in matchGoals.away"
+              :key="`away-${item.player}-${item.minute}`"
+              class="event-tag event-tag--away"
+            >
+              <span class="event-desc" :class="{ 'text-negative': item.type === 'OWN_GOAL' }">
+                {{ item.player }}{{ item.type === 'OWN_GOAL' ? ' (AG)' : '' }} {{ item.minute }}'
+              </span>
+              <span class="event-icon">{{ item.type === 'RED_CARD' ? '🟥' : item.type === 'YELLOW_CARD' ? '🟨' : item.type === 'OWN_GOAL' ? '⚽' : '⚽' }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="sports-match-card__empty-events">
+          Sin incidencias registradas
+        </div>
       </q-card-section>
     </q-card>
   </router-link>
 </template>
 
 <style scoped>
-.match-link {
+.match-card-link {
   display: block;
-  color: inherit;
   text-decoration: none;
+  color: inherit;
+  transition: transform 0.2s ease;
 }
 
-.match-card {
-  background: var(--tb-surface-raised, #1e293b);
-  border: 1px solid var(--tb-border, #2a374a);
-  border-radius: 8px;
-  box-shadow: none;
+.match-card-link:hover {
+  transform: translateY(-2px);
 }
 
-.match-card__body {
-  padding: 16px;
+.sports-match-card {
+  background: var(--tb-surface) !important;
+  border: 1px solid var(--tb-border) !important;
+  border-radius: var(--tb-radius-md) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3) !important;
+  transition: all 0.2s ease;
+  overflow: hidden;
 }
 
-.match-card__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 12px;
+.sports-match-card:hover {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45) !important;
 }
 
-.match-card__context {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  color: var(--tb-muted, #94a3b8);
-  font-size: 0.72rem;
+.sports-match-card__body {
+  padding: 16px 18px 14px;
 }
 
-.match-card__status {
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.match-card__topline {
+/* Card Header */
+.sports-match-card__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  margin-bottom: 14px;
 }
 
-.match-card__team {
+.sports-match-card__context {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex: 1;
+  gap: 10px;
   min-width: 0;
 }
 
-.match-card__team--away {
-  justify-content: flex-end;
-  text-align: right;
+.matchday-badge {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #10b981;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  border-radius: 4px;
 }
 
-.match-card__team-meta {
+.stadium-info {
+  display: inline-flex;
+  align-items: center;
+  color: var(--tb-muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Status Badges */
+.status-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #ef4444;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 4px 10px;
+  border-radius: var(--tb-radius-full);
+  animation: live-pulse 2s infinite ease-in-out;
+}
+
+.live-dot-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 6px #ef4444;
+}
+
+.status-finished-badge {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #10b981;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 4px 10px;
+  border-radius: var(--tb-radius-full);
+}
+
+.status-scheduled-badge {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #60a5fa;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 4px 10px;
+  border-radius: var(--tb-radius-full);
+}
+
+/* Match Content: 3-column Layout */
+.sports-match-card__content {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 0 14px;
+}
+
+.match-team {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  text-align: center;
   min-width: 0;
 }
 
-.match-card__team-name {
+.match-team__crest-box {
+  width: 52px;
+  height: 52px;
+  margin-bottom: 8px;
+  border: 2px solid var(--tb-border);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+}
+
+.match-team__crest {
+  border-radius: 50%;
+}
+
+.match-team__info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.match-team__name {
+  color: #ffffff;
   font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--tb-text, #f8fafc);
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  word-break: break-word;
+  max-width: 130px;
 }
 
-.match-card__team-role {
-  font-size: 0.66rem;
-  color: var(--tb-muted, #94a3b8);
+.match-team__role {
+  color: var(--tb-muted);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  margin-top: 3px;
 }
 
-.match-card__center {
+/* Center Score Box */
+.match-center-score {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-width: 120px;
+  min-width: 110px;
+}
+
+.score-box-active {
+  background: var(--tb-bg);
+  border: 1px solid var(--tb-border);
+  border-radius: var(--tb-radius-md);
+  padding: 8px 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.score-digit {
+  font-size: 2rem;
+  font-weight: 900;
+  color: #ffffff;
+  line-height: 1;
+}
+
+.score-separator {
+  font-size: 1.2rem;
+  color: var(--tb-muted);
+  font-weight: 700;
+}
+
+.score-box-scheduled {
+  background: var(--tb-bg);
+  border: 1px solid var(--tb-border);
+  border-radius: var(--tb-radius-md);
+  padding: 8px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.score-vs {
+  font-size: 1.2rem;
+  font-weight: 900;
+  color: var(--tb-primary);
+  letter-spacing: 0.04em;
+}
+
+.score-time {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--tb-muted);
+  margin-top: 2px;
+}
+
+.match-date-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--tb-muted);
+  margin-top: 8px;
   text-align: center;
 }
 
-.match-card__status-text,
-.match-card__date {
-  font-size: 0.7rem;
-  color: var(--tb-muted, #94a3b8);
-}
-
-.match-card__score {
-  margin-top: 6px;
-  font-size: 2rem;
-  line-height: 1;
-  font-weight: 700;
-  color: var(--tb-text, #f8fafc);
-}
-
-.match-card__score span {
-  font-size: 1rem;
-  color: var(--tb-muted, #94a3b8);
-}
-
-.match-card__score--scheduled {
-  padding: 6px 10px;
-  border-radius: 6px;
-  background: var(--tb-bg, #0b111e);
-}
-
-.match-card__scorers {
+/* Incidents Section */
+.sports-match-card__events {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px 12px;
-  margin-top: 12px;
+  gap: 12px;
+  margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px solid var(--tb-border, #2a374a);
+  border-top: 1px solid var(--tb-border);
 }
 
-.match-card__scorer-column {
+.events-col {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
   min-width: 0;
 }
 
-.match-card__scorer-column--away {
-  align-items: flex-end;
-  text-align: right;
+.events-col--home {
+  align-items: flex-start;
 }
 
-.match-card__scorer-item {
+.events-col--away {
+  align-items: flex-end;
+}
+
+.event-tag {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 0.75rem;
-  color: var(--tb-text, #cbd5e1);
+  gap: 5px;
+  font-size: 0.74rem;
+  color: var(--tb-text-secondary);
+  font-weight: 600;
 }
 
-.match-card__goal-icon {
+.event-icon {
   font-size: 0.8rem;
 }
 
-.match-card__no-goals {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--tb-border, #2a374a);
-  color: var(--tb-muted, #94a3b8);
-  font-size: 0.75rem;
-  text-align: center;
+.event-desc {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
 }
 
-@media (max-width: 768px) {
-  .match-card__topline {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .match-card__team,
-  .match-card__team--away {
-    justify-content: center;
-    text-align: center;
-  }
-
-  .match-card__center {
-    min-width: 0;
-  }
+.sports-match-card__empty-events {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--tb-border);
+  color: var(--tb-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  text-align: center;
 }
 </style>

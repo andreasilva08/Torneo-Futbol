@@ -39,4 +39,5 @@ export const eventTypeLabel = (type) => ({
   ASSIST: 'Asistencia',
   YELLOW_CARD: 'Tarjeta amarilla',
   RED_CARD: 'Tarjeta roja',
+  OWN_GOAL: 'Autogol (Gol en contra)',
 }[type] || 'Evento')

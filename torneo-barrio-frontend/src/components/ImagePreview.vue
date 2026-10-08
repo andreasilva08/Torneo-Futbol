@@ -101,15 +101,20 @@ const handleError = () => {
   display: inline-flex;
   flex-direction: column;
   vertical-align: middle;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
 }
 
 .image-preview__image {
   display: block;
   max-width: 100%;
-  object-fit: contain;
+  max-height: 100%;
+  object-fit: contain !important;
   border-radius: inherit;
-  background: #eef2ef;
+  background: transparent;
+  padding: 4px;
+  box-sizing: border-box;
 }
 
 .image-preview--with-status {
@@ -119,8 +124,8 @@ const handleError = () => {
 
 .image-preview__status {
   margin: 0;
-  color: #52605a;
-  font-size: 0.8rem;
+  color: var(--tb-muted, #94a3b8);
+  font-size: 0.85rem;
   line-height: 1.4;
 }
 </style>

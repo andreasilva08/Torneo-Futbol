@@ -78,14 +78,20 @@ const getTeamById = async (req, res) => {
 // @route   POST /api/teams
 const createTeam = async (req, res) => {
   try {
-    const { name, shortName, logoUrl, stadium } = req.body;
+    const { name, shortName, logoUrl, stadium, coach, neighborhood, foundationYear, primaryColor, secondaryColor, description } = req.body;
     const resolvedLogoUrl = resolveTeamLogoUrl({ logoUrl }, name, '');
 
     const newTeam = await Team.create({
       name,
       shortName,
       logoUrl: resolvedLogoUrl,
-      stadium
+      stadium,
+      coach: coach || '',
+      neighborhood: neighborhood || '',
+      foundationYear: foundationYear ? Number(foundationYear) : 2026,
+      primaryColor: primaryColor || '#15803d',
+      secondaryColor: secondaryColor || '#facc15',
+      description: description || ''
     });
 
     const teamResponse = normalizeTeamPayload(newTeam.toObject(), newTeam.name, newTeam._id.toString());

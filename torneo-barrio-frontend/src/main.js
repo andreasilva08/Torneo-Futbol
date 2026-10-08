@@ -23,6 +23,7 @@ app.use(Quasar, {
     Dialog,
   },
   config: {
+    dark: true,
     brand: {
       primary: '#10b981',
       secondary: '#3b82f6',
