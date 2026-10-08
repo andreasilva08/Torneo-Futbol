@@ -5,7 +5,6 @@ const api = axios.create({
   timeout: 20000,
 })
 
-<<<<<<< HEAD
 // Interceptor de respuesta: normaliza todos los errores en un formato consistente
 api.interceptors.response.use(
   // Respuesta exitosa: pasa tal cual
@@ -29,6 +28,4 @@ api.interceptors.response.use(
   }
 )
 
-=======
->>>>>>> f9aca878e81b62e76df11422a5a30e277108745a
 export default api
