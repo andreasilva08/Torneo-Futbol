@@ -24,10 +24,14 @@ app.use(Quasar, {
   },
   config: {
     brand: {
-      primary: '#173d2c',
-      secondary: '#1f9268',
-      accent: '#f5b700',
-      dark: '#0b1726',
+      primary: '#10b981',
+      secondary: '#3b82f6',
+      accent: '#eab308',
+      dark: '#0b111e',
+      positive: '#22c55e',
+      negative: '#ef4444',
+      info: '#3b82f6',
+      warning: '#f59e0b',
     },
   },
 })

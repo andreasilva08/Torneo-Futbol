@@ -377,8 +377,20 @@ onMounted(async () => {
         </div>
       </div>
 
+      <nav v-if="groupedMatches.length" class="matchday-selector q-mb-lg" aria-label="Ir a una jornada">
+        <a
+          v-for="group in groupedMatches"
+          :key="`jump-${group.matchday}`"
+          :href="`#matchday-${group.matchday}`"
+          class="matchday-selector__item"
+          :class="{ 'matchday-selector__item--current': group.isCurrent }"
+        >
+          J{{ group.matchday }}
+        </a>
+      </nav>
+
       <div v-if="groupedMatches.length" class="match-groups">
-        <div v-for="group in groupedMatches" :key="group.matchday" class="match-group">
+        <div v-for="group in groupedMatches" :id="`matchday-${group.matchday}`" :key="group.matchday" class="match-group">
           <div class="match-group__header">
             <span class="match-group__title">Jornada {{ group.matchday }}</span>
             <q-badge v-if="group.isCurrent" color="primary" rounded class="match-group__badge">Actual</q-badge>
@@ -400,7 +412,10 @@ onMounted(async () => {
     <q-dialog v-model="dialog" persistent>
       <q-card class="match-dialog">
         <q-card-section>
-          <div class="text-h6">Programar partido</div>
+          <div class="row items-center q-gutter-sm">
+            <q-icon name="sports_soccer" color="positive" size="1.5rem" />
+            <div class="text-h6">Programar partido</div>
+          </div>
           <div class="text-caption text-grey-7">Selecciona ambos equipos para comparar jornadas disponibles.</div>
         </q-card-section>
 
@@ -530,7 +545,7 @@ onMounted(async () => {
   gap: 20px;
   padding: 18px 20px;
   border: 1px solid rgba(17, 24, 39, 0.06);
-  border-radius: 22px;
+  border-radius: 8px;
   background: linear-gradient(135deg, rgba(26, 90, 63, 0.06), rgba(255, 255, 255, 0.9));
   box-shadow: 0 10px 24px rgba(13, 56, 37, 0.04);
 }
@@ -564,15 +579,15 @@ onMounted(async () => {
 
 .page-header__title {
   margin: 0;
-  font-size: clamp(2rem, 2.6vw, 2.8rem);
+  font-size: 28px;
   font-weight: 900;
-  letter-spacing: -0.04em;
+  letter-spacing: 0;
   color: #112a1e;
 }
 
 .page-header__cta {
   min-height: 44px;
-  border-radius: 14px;
+  border-radius: 8px;
   font-weight: 700;
 }
 
@@ -595,7 +610,7 @@ onMounted(async () => {
   padding: 18px 18px 14px;
   background: rgba(255, 255, 255, 0.7);
   border: 1px solid rgba(17, 24, 39, 0.05);
-  border-radius: 22px;
+  border-radius: 8px;
   box-shadow: 0 8px 20px rgba(13, 56, 37, 0.03);
 }
 
@@ -619,9 +634,10 @@ onMounted(async () => {
 
 .match-toolbar__filters :deep(.q-btn) {
   min-height: 42px;
-  font-size: 0.86rem;
+  font-size: 0.76rem;
   font-weight: 700;
   letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
 .match-toolbar__filters :deep(.q-btn--active) {
@@ -634,10 +650,41 @@ onMounted(async () => {
   gap: 30px;
 }
 
+.matchday-selector {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 8px;
+  scroll-behavior: smooth;
+}
+
+.matchday-selector__item {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  height: 36px;
+  border: 1px solid #2a374a;
+  border-radius: 6px;
+  background: #161f30;
+  color: #cbd5e1;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.matchday-selector__item--current {
+  border-color: #10b981;
+  background: #10b981;
+  color: #0b111e;
+}
+
 .match-group {
   display: flex;
   flex-direction: column;
   gap: 18px;
+  scroll-margin-top: 84px;
 }
 
 .match-group__header {
@@ -646,7 +693,7 @@ onMounted(async () => {
   justify-content: space-between;
   gap: 10px;
   padding: 14px 18px;
-  border-radius: 18px;
+  border-radius: 8px;
   background: linear-gradient(135deg, #edf6f2 0%, #f5faf7 100%);
   border: 1px solid rgba(17, 24, 39, 0.06);
   box-shadow: 0 6px 18px rgba(13, 56, 37, 0.02);
@@ -682,7 +729,7 @@ onMounted(async () => {
   min-width: 1000px;
   width: 100%;
   border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 16px;
+  border-radius: 8px;
   overflow: hidden;
   background: #f8faf9;
 }
@@ -774,7 +821,7 @@ onMounted(async () => {
 .matchday-card {
   position: relative;
   border: 1px solid #dfe7e1;
-  border-radius: 16px;
+  border-radius: 8px;
   background: #f8faf9;
   padding: 16px 12px 14px;
   display: flex;
@@ -863,7 +910,7 @@ onMounted(async () => {
 .team-matchdays__card {
   background: #ffffff;
   border: 1px solid rgba(17, 24, 39, 0.06);
-  border-radius: 16px;
+  border-radius: 8px;
   padding: 16px 14px;
   box-shadow: 0 8px 20px rgba(18, 61, 44, 0.03);
 }

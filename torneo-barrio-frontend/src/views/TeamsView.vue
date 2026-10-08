@@ -193,7 +193,10 @@ onMounted(async () => {
     <q-dialog v-model="dialog" persistent>
       <q-card style="max-width: 560px; width: 92vw">
         <q-card-section>
-          <div class="text-h6">{{ editingId ? 'Editar equipo' : 'Nuevo equipo' }}</div>
+          <div class="row items-center q-gutter-sm">
+            <q-icon name="groups" color="positive" size="1.5rem" />
+            <div class="text-h6">{{ editingId ? 'Editar equipo' : 'Nuevo equipo' }}</div>
+          </div>
         </q-card-section>
 
         <q-form @submit.prevent="saveTeam" class="q-gutter-md q-pa-md">

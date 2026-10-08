@@ -26,6 +26,18 @@ const summaryCards = computed(() => [
     color: 'primary',
   },
   {
+    label: 'Partidos registrados',
+    value: store.totalMatches,
+    icon: 'event',
+    color: 'info',
+  },
+  {
+    label: 'Jornadas jugadas',
+    value: new Set(store.matches.map((match) => Number(match.matchday)).filter((matchday) => matchday > 0)).size,
+    icon: 'calendar_month',
+    color: 'accent',
+  },
+  {
     label: 'Total de jugadores',
     value: store.totalPlayers,
     icon: 'sports_soccer',
@@ -173,7 +185,7 @@ onUnmounted(() => {
     </div>
 
     <div v-else class="row q-col-gutter-md q-mb-lg">
-      <div v-for="item in summaryCards" :key="item.label" class="col-12 col-sm-6 col-md-4 col-xl-2">
+      <div v-for="item in summaryCards" :key="item.label" class="col-12 col-sm-6 col-md-4 col-xl-3">
         <q-card flat bordered class="metric-card">
           <q-card-section class="row items-center justify-between">
             <div>

@@ -32,7 +32,25 @@ const matchGoals = computed(() => {
       player: getPlayerName(goal.player),
       minute: Number(goal.minute) || 0,
       assist: goal.assistPlayer ? getPlayerName(goal.assistPlayer) : null,
+      type: 'GOAL',
     }
+
+    if (teamId === homeId) {
+      homeScorers.push(entry)
+    } else if (teamId === awayId) {
+      awayScorers.push(entry)
+    }
+  }
+
+  for (const event of props.match.events || []) {
+    if (!['YELLOW_CARD', 'RED_CARD'].includes(event.type)) continue
+
+    const entry = {
+      player: getPlayerName(event.player),
+      minute: Number(event.minute) || 0,
+      type: event.type,
+    }
+    const teamId = getId(event.team)
 
     if (teamId === homeId) {
       homeScorers.push(entry)
@@ -50,6 +68,12 @@ const matchGoals = computed(() => {
     <q-card flat class="match-card">
       <q-card-section class="match-card__body">
         <div class="match-card__header">
+          <div class="match-card__context">
+            <q-badge v-if="match.matchday" color="positive" text-color="dark" rounded>
+              Jornada {{ match.matchday }}
+            </q-badge>
+            <span v-if="match.homeTeam?.stadium">{{ match.homeTeam.stadium }}</span>
+          </div>
           <q-badge :color="matchStatusColor(match.status)" rounded class="match-card__status">
             {{ matchStatusLabel(match.status) }}
           </q-badge>
@@ -99,7 +123,7 @@ const matchGoals = computed(() => {
         <div class="match-card__scorers" v-if="matchGoals.home.length || matchGoals.away.length">
           <div class="match-card__scorer-column">
             <div v-for="goal in matchGoals.home" :key="`home-${goal.player}-${goal.minute}`" class="match-card__scorer-item">
-              <span class="match-card__goal-icon">⚽</span>
+              <span class="match-card__goal-icon">{{ goal.type === 'RED_CARD' ? '🟥' : goal.type === 'YELLOW_CARD' ? '🟨' : '⚽' }}</span>
               <span>{{ goal.player }} {{ goal.minute }}'</span>
             </div>
           </div>
@@ -107,7 +131,7 @@ const matchGoals = computed(() => {
           <div class="match-card__scorer-column match-card__scorer-column--away">
             <div v-for="goal in matchGoals.away" :key="`away-${goal.player}-${goal.minute}`" class="match-card__scorer-item">
               <span>{{ goal.player }} {{ goal.minute }}'</span>
-              <span class="match-card__goal-icon">⚽</span>
+              <span class="match-card__goal-icon">{{ goal.type === 'RED_CARD' ? '🟥' : goal.type === 'YELLOW_CARD' ? '🟨' : '⚽' }}</span>
             </div>
           </div>
         </div>
@@ -126,8 +150,8 @@ const matchGoals = computed(() => {
 }
 
 .match-card {
-  background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: var(--tb-surface-raised, #1e293b);
+  border: 1px solid var(--tb-border, #2a374a);
   border-radius: 8px;
   box-shadow: none;
 }
@@ -138,8 +162,19 @@ const matchGoals = computed(() => {
 
 .match-card__header {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   margin-bottom: 12px;
+}
+
+.match-card__context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--tb-muted, #94a3b8);
+  font-size: 0.72rem;
 }
 
 .match-card__status {
@@ -178,12 +213,12 @@ const matchGoals = computed(() => {
 .match-card__team-name {
   font-size: 0.95rem;
   font-weight: 600;
-  color: #1d1d1d;
+  color: var(--tb-text, #f8fafc);
 }
 
 .match-card__team-role {
   font-size: 0.66rem;
-  color: #666;
+  color: var(--tb-muted, #94a3b8);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -200,7 +235,7 @@ const matchGoals = computed(() => {
 .match-card__status-text,
 .match-card__date {
   font-size: 0.7rem;
-  color: #666;
+  color: var(--tb-muted, #94a3b8);
 }
 
 .match-card__score {
@@ -208,18 +243,18 @@ const matchGoals = computed(() => {
   font-size: 2rem;
   line-height: 1;
   font-weight: 700;
-  color: #111;
+  color: var(--tb-text, #f8fafc);
 }
 
 .match-card__score span {
   font-size: 1rem;
-  color: #666;
+  color: var(--tb-muted, #94a3b8);
 }
 
 .match-card__score--scheduled {
   padding: 6px 10px;
   border-radius: 6px;
-  background: #f0f0f0;
+  background: var(--tb-bg, #0b111e);
 }
 
 .match-card__scorers {
@@ -228,7 +263,7 @@ const matchGoals = computed(() => {
   gap: 8px 12px;
   margin-top: 12px;
   padding-top: 10px;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  border-top: 1px solid var(--tb-border, #2a374a);
 }
 
 .match-card__scorer-column {
@@ -248,7 +283,7 @@ const matchGoals = computed(() => {
   align-items: center;
   gap: 4px;
   font-size: 0.75rem;
-  color: #333;
+  color: var(--tb-text, #cbd5e1);
 }
 
 .match-card__goal-icon {
@@ -258,8 +293,8 @@ const matchGoals = computed(() => {
 .match-card__no-goals {
   margin-top: 12px;
   padding-top: 10px;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
-  color: #666;
+  border-top: 1px solid var(--tb-border, #2a374a);
+  color: var(--tb-muted, #94a3b8);
   font-size: 0.75rem;
   text-align: center;
 }

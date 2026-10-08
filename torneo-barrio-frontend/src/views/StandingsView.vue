@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted } from 'vue'
 import { useTournamentStore } from '@/stores/tournament'
+import ImagePreview from '@/components/ImagePreview.vue'
 
 const store = useTournamentStore()
 
@@ -75,7 +76,14 @@ onMounted(async () => {
           <template #body-cell-team="props">
             <q-td :props="props">
               <div class="standings-table__team-cell">
-                <div class="standings-table__team-mark">{{ props.row.name?.charAt(0)?.toUpperCase() || 'E' }}</div>
+                <ImagePreview
+                  :src="props.row.logoUrl"
+                  fallback="/images/default-team.svg"
+                  :alt="`Escudo de ${props.row.name || 'equipo'}`"
+                  width="34px"
+                  height="34px"
+                  class="standings-table__team-mark"
+                />
                 <span :class="teamNameClass(props.row.name)">{{ props.row.name }}</span>
               </div>
             </q-td>
@@ -89,7 +97,7 @@ onMounted(async () => {
 
           <template #body-cell-points="props">
             <q-td :props="props" class="text-center">
-              <span :class="pointsClass(props.row.points)">{{ props.row.points }}</span>
+              <span :class="pointsClass(props.row.points)">{{ props.row.points }} PTS</span>
             </q-td>
           </template>
         </q-table>

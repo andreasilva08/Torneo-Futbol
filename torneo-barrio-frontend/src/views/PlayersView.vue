@@ -20,6 +20,13 @@ const imageUrlRules = [
   (value) => isOptionalImageUrl(value) || 'Si la URL no es válida, se usará la imagen por defecto.',
 ]
 
+const positionColor = (position) => {
+  if (position === 'Portero') return 'warning'
+  if (position === 'Defensa') return 'secondary'
+  if (position === 'Delantero') return 'positive'
+  return 'info'
+}
+
 const form = reactive({
   name: '',
   number: null,
@@ -252,7 +259,9 @@ onMounted(async () => {
               />
               <div>
                 <div class="text-weight-medium">{{ props.row.name }}</div>
-                <div class="text-caption text-grey-7">{{ props.row.position }}</div>
+                <q-chip dense size="sm" :color="positionColor(props.row.position)" text-color="white">
+                  {{ props.row.position }}
+                </q-chip>
               </div>
             </div>
           </q-td>
@@ -280,7 +289,10 @@ onMounted(async () => {
     <q-dialog v-model="dialog" persistent>
       <q-card style="max-width: 560px; width: 92vw">
         <q-card-section>
-          <div class="text-h6">{{ editingId ? 'Editar jugador' : 'Nuevo jugador' }}</div>
+          <div class="row items-center q-gutter-sm">
+            <q-icon name="sports_soccer" color="positive" size="1.5rem" />
+            <div class="text-h6">{{ editingId ? 'Editar jugador' : 'Nuevo jugador' }}</div>
+          </div>
         </q-card-section>
 
         <q-form @submit.prevent="savePlayer" class="q-gutter-md q-pa-md">
