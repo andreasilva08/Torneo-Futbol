@@ -1,105 +1,92 @@
 const Match = require('../models/Match');
-const Player = require('../models/Player');
 const Team = require('../models/Team');
 
-const buildStatsTable = async (eventType, labelField) => {
-  const matches = await Match.find({}).lean();
-  const statsMap = new Map();
+// ─── Aggregation Pipeline: Goleadores ───────────────────────────────────────
+const getTopScorersAgg = async () => {
+  return Match.aggregate([
+    { $unwind: '$goals' },
+    {
+      $group: {
+        _id: '$goals.player',
+        teamId: { $last: '$goals.team' },
+        goals: { $sum: 1 },
+      },
+    },
+    { $sort: { goals: -1, _id: 1 } },
+    {
+      $lookup: {
+        from: 'players',
+        localField: '_id',
+        foreignField: '_id',
+        as: 'playerData',
+      },
+    },
+    { $unwind: { path: '$playerData', preserveNullAndEmpty: true } },
+    {
+      $lookup: {
+        from: 'teams',
+        localField: 'teamId',
+        foreignField: '_id',
+        as: 'teamData',
+      },
+    },
+    { $unwind: { path: '$teamData', preserveNullAndEmpty: true } },
+    {
+      $project: {
+        _id: 0,
+        playerId: '$_id',
+        player: { $ifNull: ['$playerData.name', 'Jugador desconocido'] },
+        team: { $ifNull: ['$teamData.name', 'Sin equipo'] },
+        teamId: '$teamId',
+        goals: 1,
+      },
+    },
+  ]);
+};
 
-  matches.forEach((match) => {
-    const goalEntries = Array.isArray(match.goals) ? match.goals : [];
-    const eventEntries = Array.isArray(match.events) ? match.events : [];
-
-    if (eventType === 'GOAL') {
-      goalEntries.forEach((goal) => {
-        if (!goal?.player || !goal?.team) {
-          return;
-        }
-
-        const playerId = goal.player.toString();
-        const teamId = goal.team.toString();
-        const current = statsMap.get(playerId) || { playerId, teamId, count: 0 };
-
-        current.count += 1;
-        current.teamId = teamId;
-        statsMap.set(playerId, current);
-      });
-      return;
-    }
-
-    const assistKeys = new Set();
-
-    goalEntries.forEach((goal) => {
-      if (!goal?.assistPlayer || !goal?.team) {
-        return;
-      }
-
-      const playerId = goal.assistPlayer.toString();
-      const teamId = goal.team.toString();
-      const key = `${match._id.toString()}:${teamId}:${playerId}:${goal.minute ?? 'n/a'}`;
-      if (assistKeys.has(key)) {
-        return;
-      }
-
-      assistKeys.add(key);
-      const current = statsMap.get(playerId) || { playerId, teamId, count: 0 };
-      current.count += 1;
-      current.teamId = teamId;
-      statsMap.set(playerId, current);
-    });
-
-    eventEntries.forEach((event) => {
-      if (!event || event.type !== 'ASSIST' || !event.player || !event.team) {
-        return;
-      }
-
-      const playerId = event.player.toString();
-      const teamId = event.team.toString();
-      const key = `${match._id.toString()}:${teamId}:${playerId}:${event.minute ?? 'n/a'}`;
-      if (assistKeys.has(key)) {
-        return;
-      }
-
-      const current = statsMap.get(playerId) || { playerId, teamId, count: 0 };
-      current.count += 1;
-      current.teamId = teamId;
-      statsMap.set(playerId, current);
-    });
-  });
-
-  const playerIds = [...statsMap.keys()];
-  const players = playerIds.length
-    ? await Player.find({ _id: { $in: playerIds } }).populate('team', 'name shortName').lean()
-    : [];
-
-  const playerById = new Map(players.map((player) => [player._id.toString(), player]));
-  const teams = await Team.find().lean();
-  const teamById = new Map(teams.map((team) => [team._id.toString(), team]));
-
-  const rows = [...statsMap.values()].map((entry) => {
-    const player = playerById.get(entry.playerId) || null;
-    const team = teamById.get(entry.teamId) || (player?.team ? teamById.get(player.team._id.toString()) : null);
-
-    return {
-      playerId: entry.playerId,
-      player: player?.name || 'Jugador desconocido',
-      team: team?.name || player?.team?.name || 'Sin equipo',
-      teamId: team?._id || player?.team?._id || null,
-      [labelField]: entry.count,
-    };
-  }).sort((first, second) => {
-    const diff = Number(second[labelField]) - Number(first[labelField]);
-    if (diff !== 0) {
-      return diff;
-    }
-
-    return String(first.player).localeCompare(String(second.player));
-  });
-
-  return rows.map((row, index) => ({
-    position: index + 1,
-    ...row,
-  }));
+// ─── Aggregation Pipeline: Asistencias ──────────────────────────────────────
+const getTopAssistsAgg = async () => {
+  return Match.aggregate([
+    { $unwind: '$goals' },
+    // Solo goles que tienen asistencia registrada
+    { $match: { 'goals.assistPlayer': { $ne: null, $exists: true } } },
+    {
+      $group: {
+        _id: '$goals.assistPlayer',
+        teamId: { $last: '$goals.team' },
+        assists: { $sum: 1 },
+      },
+    },
+    { $sort: { assists: -1, _id: 1 } },
+    {
+      $lookup: {
+        from: 'players',
+        localField: '_id',
+        foreignField: '_id',
+        as: 'playerData',
+      },
+    },
+    { $unwind: { path: '$playerData', preserveNullAndEmpty: true } },
+    {
+      $lookup: {
+        from: 'teams',
+        localField: 'teamId',
+        foreignField: '_id',
+        as: 'teamData',
+      },
+    },
+    { $unwind: { path: '$teamData', preserveNullAndEmpty: true } },
+    {
+      $project: {
+        _id: 0,
+        playerId: '$_id',
+        player: { $ifNull: ['$playerData.name', 'Jugador desconocido'] },
+        team: { $ifNull: ['$teamData.name', 'Sin equipo'] },
+        teamId: '$teamId',
+        assists: 1,
+      },
+    },
+  ]);
 };
 
 const getStandings = async (req, res) => {
@@ -191,8 +178,8 @@ const getStandings = async (req, res) => {
 
 const getTopScorers = async (req, res) => {
   try {
-    const scorers = await buildStatsTable('GOAL', 'goals');
-    res.status(200).json(scorers);
+    const rows = await getTopScorersAgg();
+    res.status(200).json(rows.map((row, i) => ({ position: i + 1, ...row })));
   } catch (error) {
     res.status(500).json({ message: 'Error al calcular los goleadores', error: error.message });
   }
@@ -200,8 +187,8 @@ const getTopScorers = async (req, res) => {
 
 const getTopAssists = async (req, res) => {
   try {
-    const assists = await buildStatsTable('ASSIST', 'assists');
-    res.status(200).json(assists);
+    const rows = await getTopAssistsAgg();
+    res.status(200).json(rows.map((row, i) => ({ position: i + 1, ...row })));
   } catch (error) {
     res.status(500).json({ message: 'Error al calcular las asistencias', error: error.message });
   }

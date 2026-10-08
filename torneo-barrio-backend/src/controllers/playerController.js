@@ -2,11 +2,25 @@ const Player = require('../models/Player');
 const Team = require('../models/Team');
 
 // @desc    Obtener todos los jugadores
-// @route   GET /api/players
+// @route   GET /api/players  (opcional: ?page=1&limit=20)
 const getPlayers = async (req, res) => {
   try {
-    // populate('team', 'name shortName') trae el nombre y sigla del equipo en lugar de solo el ID
-    const players = await Player.find().populate('team', 'name shortName');
+    // Paginación opcional: ?page=1&limit=20
+    const page  = req.query.page  ? Math.max(1, Number(req.query.page))  : null;
+    const limit = req.query.limit ? Math.max(1, Number(req.query.limit)) : null;
+
+    const query = Player.find().populate('team', 'name shortName');
+
+    if (page && limit) {
+      const total = await Player.countDocuments();
+      const players = await query.skip((page - 1) * limit).limit(limit);
+      return res.status(200).json({
+        data: players,
+        pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+      });
+    }
+
+    const players = await query;
     res.status(200).json(players);
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener los jugadores', error: error.message });
