@@ -6,12 +6,17 @@ const Player = require('../models/Player');
 
 const getMatches = async (req, res) => {
     try {
+<<<<<<< HEAD
         const filter = {};
+=======
+        const filter ={};
+>>>>>>> f9aca878e81b62e76df11422a5a30e277108745a
         if (req.query.matchday) filter.matchday = Number(req.query.matchday);
         if (req.query.status) {
             filter.status = String(req.query.status).trim().toUpperCase();
         }
 
+<<<<<<< HEAD
         // Paginación opcional: ?page=1&limit=20
         // Si no se envían, retorna todo (comportamiento original)
         const page  = req.query.page  ? Math.max(1, Number(req.query.page))  : null;
@@ -36,6 +41,17 @@ const getMatches = async (req, res) => {
 
     } catch (error) {
         res.status(500).json({ message: 'Error al obtener los partidos', error: error.message });
+=======
+        const matches = await Match.find(filter)
+            .populate('homeTeam', 'name shortName logoUrl')
+            .populate('awayTeam', 'name shortName logoUrl')
+            .sort({matchday: 1, date: 1});
+
+        res.status(200).json(matches);
+
+    }catch (error) {
+        res.status(500).json({message: 'Error al obtener los partidos', error: error.message});
+>>>>>>> f9aca878e81b62e76df11422a5a30e277108745a
     }
 };
 
@@ -97,6 +113,7 @@ const createMatch = async (req, res) => {
         }
 
         const invalidTeams = [];
+<<<<<<< HEAD
         const [homeMatchdays, awayMatchdays] = await Promise.all([
             getFinishedMatchdaysForTeam(homeExist._id.toString()),
             getFinishedMatchdaysForTeam(awayExist._id.toString()),
@@ -107,6 +124,13 @@ const createMatch = async (req, res) => {
         }
         if (awayMatchdays.length && numericMatchday <= Math.max(...awayMatchdays)) {
             invalidTeams.push(awayExist.name);
+=======
+        for (const team of [homeExist, awayExist]) {
+            const finishedMatchdays = await getFinishedMatchdaysForTeam(team._id.toString());
+            if (finishedMatchdays.length && numericMatchday <= Math.max(...finishedMatchdays)) {
+                invalidTeams.push(team.name);
+            }
+>>>>>>> f9aca878e81b62e76df11422a5a30e277108745a
         }
 
         if (invalidTeams.length) {
@@ -209,6 +233,7 @@ const updateMatchResult = async (req, res) => {
 
         await match.save();
 
+<<<<<<< HEAD
         // populate() sobre el doc ya en memoria — evita segunda consulta a la BD
         await match.populate('homeTeam', 'name shortName logoUrl');
         await match.populate('awayTeam', 'name shortName logoUrl');
@@ -218,6 +243,17 @@ const updateMatchResult = async (req, res) => {
         res.status(200).json(match);
     } catch (error) {
         res.status(400).json({ message: 'Error al registrar el resultado', error: error.message });
+=======
+        const updated = await Match.findById(match._id)
+        .populate('homeTeam', 'name shortName logoUrl')
+        .populate('awayTeam', 'name shortName logoUrl')
+        .populate('goals.player', 'name number')
+        .populate('goals.team', 'name shortName');
+        
+        res.status(200).json(updated);
+    } catch (error) {
+        res.status(400).json({ message: 'Error al registrar el resultado', error: error.message})    
+>>>>>>> f9aca878e81b62e76df11422a5a30e277108745a
     }
 };
 
@@ -251,6 +287,7 @@ const updateMatchEvents = async (req, res) => {
         match.events = events;
         await match.save();
 
+<<<<<<< HEAD
         // populate() sobre el doc ya en memoria — evita segunda consulta a la BD
         await match.populate('homeTeam', 'name shortName logoUrl');
         await match.populate('awayTeam', 'name shortName logoUrl');
@@ -260,6 +297,17 @@ const updateMatchEvents = async (req, res) => {
         await match.populate('events.team', 'name shortName');
 
         res.status(200).json(match);
+=======
+        const updated = await Match.findById(match._id)
+            .populate('homeTeam', 'name shortName logoUrl')
+            .populate('awayTeam', 'name shortName logoUrl')
+            .populate('goals.player', 'name number')
+            .populate('goals.team', 'name shortName')
+            .populate('events.player', 'name number')
+            .populate('events.team', 'name shortName');
+
+        res.status(200).json(updated);
+>>>>>>> f9aca878e81b62e76df11422a5a30e277108745a
     } catch (error) {
         res.status(400).json({ message: 'Error al registrar los eventos', error: error.message });
     }

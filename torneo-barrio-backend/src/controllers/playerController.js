@@ -2,6 +2,7 @@ const Player = require('../models/Player');
 const Team = require('../models/Team');
 
 // @desc    Obtener todos los jugadores
+<<<<<<< HEAD
 // @route   GET /api/players  (opcional: ?page=1&limit=20)
 const getPlayers = async (req, res) => {
   try {
@@ -21,6 +22,13 @@ const getPlayers = async (req, res) => {
     }
 
     const players = await query;
+=======
+// @route   GET /api/players
+const getPlayers = async (req, res) => {
+  try {
+    // populate('team', 'name shortName') trae el nombre y sigla del equipo en lugar de solo el ID
+    const players = await Player.find().populate('team', 'name shortName');
+>>>>>>> f9aca878e81b62e76df11422a5a30e277108745a
     res.status(200).json(players);
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener los jugadores', error: error.message });
