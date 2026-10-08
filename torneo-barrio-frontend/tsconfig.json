@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["es2023", "DOM"],
+
+    // Provee tipos para import.meta.env (usado en api.js y otros archivos .js)
+    "types": ["vite/client"],
+
+    // El proyecto usa JavaScript (.js, .vue), no TypeScript puro
+    "allowJs": true,
+    "checkJs": false,
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "noEmit": true
+  },
+  "include": ["src"]
+}
