@@ -38,16 +38,50 @@ const formatPlayerOption = (player) => {
   return `#${num} ${name}`
 }
 
+// Helper que compara al jugador contra el equipo seleccionado (por ID o por Nombre)
+const isPlayerInTeam = (player, selectedTeamId) => {
+  if (!selectedTeamId) return false
+
+  const targetId = String(selectedTeamId)
+  
+  // Buscar el nombre del equipo seleccionado en el store o en los equipos del partido
+  const targetTeamObj = store.teams.find((t) => String(t._id) === targetId) ||
+                        participantTeams.value.find((t) => String(getId(t)) === targetId)
+  
+  const targetName = targetTeamObj 
+    ? String(targetTeamObj.name || targetTeamObj.nombre || '').toLowerCase().trim() 
+    : ''
+
+  // Extraer el equipo guardado en el registro del jugador
+  const rawTeam = player.team || player.equipo
+  let pTeamId = ''
+  let pTeamName = ''
+
+  if (rawTeam && typeof rawTeam === 'object') {
+    pTeamId = String(rawTeam._id || rawTeam.id || '')
+    pTeamName = String(rawTeam.name || rawTeam.nombre || '').toLowerCase().trim()
+  } else if (rawTeam) {
+    pTeamId = String(rawTeam)
+    pTeamName = String(rawTeam).toLowerCase().trim()
+  }
+
+  // Retorna verdadero si coincide por ID o si coincide por Nombre
+  return (
+    (targetId && pTeamId === targetId) ||
+    (targetName && pTeamName === targetName)
+  )
+}
+
 const goalPlayerOptions = computed(() => store.players
-  .filter((player) => getId(player.team) === goalForm.team)
+  .filter((player) => isPlayerInTeam(player, goalForm.team))
   .map((player) => ({ label: formatPlayerOption(player), value: player._id })))
 
 const assistPlayerOptions = computed(() => store.players
-  .filter((player) => getId(player.team) === goalForm.team && player._id !== goalForm.player)
+  .filter((player) => isPlayerInTeam(player, goalForm.team) && String(player._id) !== String(goalForm.player))
   .map((player) => ({ label: formatPlayerOption(player), value: player._id })))
 
 const eventPlayerOptions = computed(() => store.players
-  .filter((player) => getId(player.team) === eventForm.team)
+  .filter((player) => isPlayerInTeam(player, eventForm.team))
   .map((player) => ({ label: formatPlayerOption(player), value: player._id })))
 
 const playerName = (value) => {
@@ -509,7 +543,6 @@ const finishMatch = () => {
                   v-model="eventForm.type"
                   :options="[
                     { label: 'Asistencia de gol 👟', value: 'ASSIST' },
-                    { label: 'Autogol (Gol en contra) ⚽ (AG)', value: 'OWN_GOAL' },
                     { label: 'Tarjeta amarilla 🟨', value: 'YELLOW_CARD' },
                     { label: 'Tarjeta roja 🟥', value: 'RED_CARD' },
                   ]"

@@ -49,15 +49,39 @@ export const useTournamentStore = defineStore('tournament', {
       this.error = null
 
       try {
-        const [teamsResponse, playersResponse, matchesResponse] = await Promise.all([
+        // Promise.allSettled permite que las peticiones que funcionen sí carguen sus datos
+        const [teamsRes, playersRes, matchesRes] = await Promise.allSettled([
           api.get('/teams'),
           api.get('/players'),
           api.get('/matches'),
         ])
 
-        this.teams = teamsResponse.data || []
-        this.players = playersResponse.data || []
-        this.matches = (matchesResponse.data || []).map(normalizeMatch)
+        if (teamsRes.status === 'fulfilled') {
+          this.teams = teamsRes.value.data || []
+        } else {
+          console.warn('⚠️ Falló /teams:', teamsRes.reason)
+        }
+
+        if (playersRes.status === 'fulfilled') {
+          this.players = playersRes.value.data || []
+        } else {
+          console.warn('⚠️ Falló /players:', playersRes.reason)
+        }
+
+        if (matchesRes.status === 'fulfilled') {
+          this.matches = (matchesRes.value.data || []).map(normalizeMatch)
+        } else {
+          console.warn('⚠️ Falló /matches:', matchesRes.reason)
+        }
+
+        // Solo si TODAS las peticiones colapsaron, se muestra el error general
+        if (
+          teamsRes.status === 'rejected' &&
+          playersRes.status === 'rejected' &&
+          matchesRes.status === 'rejected'
+        ) {
+          this.error = 'No se pudo obtener la información principal del servidor.'
+        }
       } catch (error) {
         this.error = getErrorMessage(error)
       } finally {
@@ -113,13 +137,12 @@ export const useTournamentStore = defineStore('tournament', {
 
     async fetchStandings() {
       this.loading = true
-      this.error = null
-
       try {
         const { data } = await api.get('/standings')
         this.standings = data || []
       } catch (error) {
-        this.error = getErrorMessage(error)
+        console.warn('No se pudo cargar la tabla de posiciones:', error)
+        this.standings = []
       } finally {
         this.loading = false
       }
@@ -127,13 +150,12 @@ export const useTournamentStore = defineStore('tournament', {
 
     async fetchTopScorers() {
       this.loading = true
-      this.error = null
-
       try {
         const { data } = await api.get('/stats/top-scorers')
         this.scorers = data || []
       } catch (error) {
-        this.error = getErrorMessage(error)
+        console.warn('No se pudo cargar la lista de goleadores:', error)
+        this.scorers = []
       } finally {
         this.loading = false
       }
@@ -184,7 +206,7 @@ export const useTournamentStore = defineStore('tournament', {
       }
     },
 
-async fetchTeamDetail(teamId) {
+    async fetchTeamDetail(teamId) {
       this.loading = true
       this.error = null
 
@@ -201,7 +223,7 @@ async fetchTeamDetail(teamId) {
         // 3. Filtrar los jugadores de la store que pertenezcan a este equipo (comparando por nombre o id)
         const teamPlayers = (this.players || []).filter(player => {
           return (
-            player.equipo === team.nombre || 
+            player.equipo === team.nombre ||
             player.team === team.nombre ||
             player.teamId === team._id ||
             player.team === team._id

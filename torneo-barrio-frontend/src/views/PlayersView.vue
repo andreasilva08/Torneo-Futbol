@@ -179,20 +179,56 @@ const numberOptionsList = computed(() => numberOptions.map((value) => ({
   disabled: occupiedNumbersByTeam.value.has(value),
 })))
 
+// Declarar getTeamId SOLO UNA VEZ
+const getTeamId = (player) => {
+  const rawTeam = player.team || player.equipo
+  if (!rawTeam) return ''
+  if (typeof rawTeam === 'object') return String(rawTeam._id || rawTeam.id || '')
+  return String(rawTeam)
+}
 const filteredPlayers = computed(() => {
   const query = search.value.trim().toLowerCase()
 
+  // 1. Obtener ID y Nombre del equipo seleccionado en el filtro desplegable
+  const selectedTeamObj = store.teams.find((t) => String(t._id) === String(teamFilter.value))
+  const selectedTeamId = String(teamFilter.value)
+  const selectedTeamName = selectedTeamObj ? String(selectedTeamObj.name).toLowerCase().trim() : ''
+
   return store.players.filter((player) => {
-    const playerTeamId = typeof player.team === 'object' ? player.team?._id : player.team
-    const teamNameStr = player.team?.name || player.equipo || ''
+    // 2. Extraer ID y Nombre del equipo guardado en el registro del jugador
+    const rawTeam = player.team || player.equipo
+    let playerTeamId = ''
+    let playerTeamName = ''
+
+    if (rawTeam && typeof rawTeam === 'object') {
+      playerTeamId = String(rawTeam._id || rawTeam.id || '')
+      playerTeamName = String(rawTeam.name || rawTeam.nombre || '').toLowerCase().trim()
+    } else if (rawTeam) {
+      playerTeamId = String(rawTeam)
+      playerTeamName = String(rawTeam).toLowerCase().trim()
+    }
+
     const playerNameStr = player.name || player.nombre || ''
     const playerPosStr = player.position || player.posicion || ''
-    const playerCond = (player.status || player.condicion || 'TITULAR').toUpperCase()
+    const playerCond = String(player.status || player.condicion || 'TITULAR').toUpperCase()
 
-    const matchesSearch = !query || `${playerNameStr} ${playerPosStr} ${teamNameStr}`.toLowerCase().includes(query)
-    const matchesTeam = teamFilter.value === 'ALL' || playerTeamId === teamFilter.value || player.equipo === teamFilter.value
-    const matchesPos = positionFilter.value === 'ALL' || playerPosStr === positionFilter.value
+    // 3. Buscador general por texto (nombre, posición o equipo)
+    const matchesSearch = !query || `${playerNameStr} ${playerPosStr} ${playerTeamName}`.toLowerCase().includes(query)
 
+    // 4. Filtro por Equipo (Compara por ID Y por Nombre simultáneamente)
+    let matchesTeam = true
+    if (teamFilter.value !== 'ALL') {
+      matchesTeam = (
+        (selectedTeamId && playerTeamId === selectedTeamId) ||
+        (selectedTeamName && playerTeamName === selectedTeamName)
+      )
+    }
+
+    // 5. Filtro por Posición
+    const matchesPos = positionFilter.value === 'ALL' || 
+      playerPosStr.toLowerCase().trim() === String(positionFilter.value).toLowerCase().trim()
+
+    // 6. Filtro por Condición
     let matchesStatus = true
     if (statusFilter.value !== 'ALL') {
       const meta = getCondicionMeta(playerCond)
@@ -339,12 +375,15 @@ watch(
 onMounted(async () => {
   await Promise.all([store.fetchTeams(), store.fetchPlayers()])
 
+  console.log('JUGADORES CARGADOS:', store.players)
+  console.log('EQUIPOS CARGADOS:', store.teams)
+
   if (route.query.teamId && store.teams.some((team) => team._id === route.query.teamId)) {
     resetForm()
     form.team = route.query.teamId
     dialog.value = true
   }
-})
+  })
 </script>
 
 <template>
@@ -444,20 +483,21 @@ onMounted(async () => {
     <!-- PLAYERS TABLE WITH PILL-STYLE ROWS -->
     <q-card flat class="sports-panel-card">
       <q-table
-        :rows="filteredPlayers"
-        :columns="[
-          { name: 'number', label: 'DORSAL', field: (row) => row.number ?? row.dorsal, align: 'center', sortable: true },
-          { name: 'player', label: 'JUGADOR', field: (row) => row.name || row.nombre, align: 'left', sortable: true },
-          { name: 'position', label: 'POSICIÓN', field: (row) => row.position || row.posicion, align: 'left', sortable: true },
-          { name: 'team', label: 'EQUIPO', field: (row) => row.team?.name || row.equipo, align: 'left', sortable: true },
-          { name: 'status', label: 'CONDICIÓN', field: (row) => row.status || row.condicion, align: 'center', sortable: true },
-          { name: 'actions', label: 'ACCIONES', field: 'actions', align: 'right' },
-        ]"
-        row-key="_id"
-        flat
-        hide-pagination
-        class="players-pill-table"
-      >
+  :rows="filteredPlayers"
+  :columns="[
+    { name: 'number', label: 'DORSAL', field: (row) => row.number ?? row.dorsal, align: 'center', sortable: true },
+    { name: 'player', label: 'JUGADOR', field: (row) => row.name || row.nombre, align: 'left', sortable: true },
+    { name: 'position', label: 'POSICIÓN', field: (row) => row.position || row.posicion, align: 'left', sortable: true },
+    { name: 'team', label: 'EQUIPO', field: (row) => row.team?.name || row.equipo, align: 'left', sortable: true },
+    { name: 'status', label: 'CONDICIÓN', field: (row) => row.status || row.condicion, align: 'center', sortable: true },
+    { name: 'actions', label: 'ACCIONES', field: 'actions', align: 'right' },
+  ]"
+  row-key="_id"
+  flat
+  hide-pagination
+  :pagination="{ rowsPerPage: 0 }"
+  class="players-pill-table"
+>
         <!-- DORSAL (BLUE BOX) -->
         <template #body-cell-number="props">
           <q-td :props="props" class="text-center">
