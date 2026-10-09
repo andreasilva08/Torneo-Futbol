@@ -260,6 +260,7 @@ const selectMatchday = (day) => {
 onMounted(async () => {
   await Promise.all([store.fetchTeams(), store.fetchPlayers(), store.fetchMatches()])
 })
+
 </script>
 
 <template>
@@ -992,9 +993,10 @@ onMounted(async () => {
 }
 
 .matchday-matches-count {
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   color: var(--tb-muted);
   font-weight: 600;
+  margin-inline: 15px;
 }
 
 /* Modal Dialog */

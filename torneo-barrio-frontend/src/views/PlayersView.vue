@@ -157,20 +157,79 @@ const teamOptions = computed(() => store.teams.map((team) => ({
   value: team._id,
   logoUrl: team.logoUrl || '/images/default-team.svg',
 })))
-
 const occupiedNumbersByTeam = computed(() => {
-  const teamId = form.team
-  if (!teamId) return new Set()
+  const targetValue = String(form.team || '').trim().toLowerCase()
+  if (!targetValue) return new Set()
 
-  return new Set(
-    store.players
-      .filter((player) => {
-        const playerTeamId = typeof player.team === 'object' ? player.team?._id : player.team
-        return playerTeamId === teamId && (!editingId.value || player._id !== editingId.value)
-      })
-      .map((player) => Number(player.number ?? player.dorsal))
-      .filter((value) => Number.isInteger(value))
-  )
+  // 1. Recopilar todos los identificadores (ID y Nombre) del equipo seleccionado en el modal
+  const targetIds = new Set([targetValue])
+  const targetNames = new Set([targetValue])
+
+  const targetTeamObj = store.teams.find((t) => {
+    const tId = String(t._id || t.id || '').toLowerCase()
+    const tName = String(t.name || t.nombre || '').toLowerCase().trim()
+    return tId === targetValue || tName === targetValue
+  })
+
+  if (targetTeamObj) {
+    if (targetTeamObj._id) targetIds.add(String(targetTeamObj._id).toLowerCase())
+    if (targetTeamObj.id) targetIds.add(String(targetTeamObj.id).toLowerCase())
+    if (targetTeamObj.name) targetNames.add(String(targetTeamObj.name).toLowerCase().trim())
+    if (targetTeamObj.nombre) targetNames.add(String(targetTeamObj.nombre).toLowerCase().trim())
+  }
+
+  const occupied = new Set()
+
+  // 2. Analizar cada jugador de la lista global
+  store.players.forEach((player) => {
+    // Si estamos editando, ignoramos al mismo jugador para que conserve su dorsal actual
+    if (editingId.value && String(player._id || player.id) === String(editingId.value)) {
+      return
+    }
+
+    // Extraer todos los identificadores de equipo guardados en la ficha del jugador
+    const pIds = new Set()
+    const pNames = new Set()
+
+    const addIdentifiers = (val) => {
+      if (!val) return
+      if (typeof val === 'object') {
+        if (val._id) pIds.add(String(val._id).toLowerCase())
+        if (val.id) pIds.add(String(val.id).toLowerCase())
+        if (val.name) pNames.add(String(val.name).toLowerCase().trim())
+        if (val.nombre) pNames.add(String(val.nombre).toLowerCase().trim())
+      } else {
+        const str = String(val).toLowerCase().trim()
+        pIds.add(str)
+        pNames.add(str)
+      }
+    }
+
+    addIdentifiers(player.team)
+    addIdentifiers(player.equipo)
+    addIdentifiers(player.teamId)
+
+    // Comprobar si hay coincidencia por ID o por Nombre con el equipo seleccionado
+    let isSameTeam = false
+    for (const id of pIds) {
+      if (targetIds.has(id)) { isSameTeam = true; break }
+    }
+    if (!isSameTeam) {
+      for (const name of pNames) {
+        if (targetNames.has(name)) { isSameTeam = true; break }
+      }
+    }
+
+    // Si pertenece al equipo, registramos su dorsal como ocupado
+    if (isSameTeam) {
+      const num = Number(player.number ?? player.dorsal)
+      if (Number.isInteger(num) && num > 0) {
+        occupied.add(num)
+      }
+    }
+  })
+
+  return occupied
 })
 
 const numberOptionsList = computed(() => numberOptions.map((value) => ({
@@ -1045,12 +1104,17 @@ onMounted(async () => {
   box-shadow: 0 0 8px var(--tb-primary-glow);
 }
 
-.num-select-btn--disabled {
-  opacity: 0.25;
-  cursor: not-allowed;
-  background: #0b111e;
-  border-color: transparent;
-  color: #64748b;
+/* Resaltar números bloqueados en rojo tachado */
+.num-select-btn--disabled,
+.num-select-btn:disabled {
+  opacity: 1 !important;
+  cursor: not-allowed !important;
+  background: rgba(239, 68, 68, 0.22) !important;
+  border: 1px solid rgba(239, 68, 68, 0.7) !important;
+  color: #f87171 !important;
+  text-decoration: line-through !important;
+  font-weight: 900 !important;
+  pointer-events: none !important;
 }
 
 @media (max-width: 600px) {

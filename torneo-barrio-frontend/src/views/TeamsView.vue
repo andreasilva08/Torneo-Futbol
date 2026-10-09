@@ -30,10 +30,37 @@ const form = reactive({
   logoUrl: '',
 })
 
+// Contar jugadores de un equipo de forma segura (por ID o por Nombre)
 const getTeamPlayerCount = (teamId) => {
-  return store.players.filter((p) => {
-    const tId = typeof p.team === 'object' ? p.team?._id : p.team
-    return tId === teamId
+  if (!store.players || store.players.length === 0) return 0
+
+  const targetId = String(teamId)
+  
+  // Buscar el objeto del equipo en el store para obtener su nombre oficial
+  const targetTeamObj = store.teams.find((t) => String(t._id || t.id || '') === targetId)
+  const targetName = targetTeamObj 
+    ? String(targetTeamObj.name || targetTeamObj.nombre || '').toLowerCase().trim() 
+    : ''
+
+  return store.players.filter((player) => {
+    // Extraer equipo del jugador (sea objeto, ID o texto en 'team', 'equipo' o 'teamId')
+    const rawTeam = player.team || player.equipo || player.teamId
+    let pId = ''
+    let pName = ''
+
+    if (rawTeam && typeof rawTeam === 'object') {
+      pId = String(rawTeam._id || rawTeam.id || '')
+      pName = String(rawTeam.name || rawTeam.nombre || '').toLowerCase().trim()
+    } else if (rawTeam) {
+      pId = String(rawTeam)
+      pName = String(rawTeam).toLowerCase().trim()
+    }
+
+    // Cuenta al jugador si coincide por ID o por Nombre del club
+    return (
+      (targetId && pId === targetId) ||
+      (targetName && pName === targetName)
+    )
   }).length
 }
 
@@ -169,11 +196,9 @@ const removeTeam = async (teamId, teamName) => {
 }
 
 onMounted(async () => {
-  await Promise.all([
-    store.fetchTeams(),
-    store.fetchPlayers(),
-    store.fetchStandings(),
-  ])
+  if (!store.teams.length) await store.fetchTeams()
+  if (!store.players.length) await store.fetchPlayers() 
+  if (!store.matches.length) await store.fetchMatches()
 })
 </script>
 

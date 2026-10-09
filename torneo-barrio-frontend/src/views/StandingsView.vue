@@ -361,11 +361,13 @@ onMounted(async () => {
 .legend-dot--champion {
   background: #f97316;
   box-shadow: 0 0 6px #f97316;
+  margin-inline: 10px;
 }
 
 .legend-dot--playoff {
   background: #2563eb;
   box-shadow: 0 0 6px #2563eb;
+  margin-inline: 10px;
 }
 
 .standings-tiebreaker {

@@ -134,18 +134,20 @@ const getCondicionMeta = (val) => {
           </div>
 
           <q-table
-            :rows="players"
-            :columns="[
-              { name: 'player', label: 'JUGADOR', field: (row) => row.name || row.nombre, align: 'left', sortable: true },
-              { name: 'number', label: 'DORSAL', field: (row) => row.number ?? row.dorsal, align: 'center', sortable: true },
-              { name: 'position', label: 'POSICIÓN', field: (row) => row.position || row.posicion, align: 'center', sortable: true },
-              { name: 'status', label: 'CONDICIÓN', field: (row) => row.status || row.condicion, align: 'center' },
-            ]"
-            row-key="_id"
-            flat
-            hide-pagination
-            class="roster-sports-table"
-          >
+  :rows="players"
+  :columns="[
+    { name: 'player', label: 'JUGADOR', field: (row) => row.name || row.nombre, align: 'left', sortable: true },
+    { name: 'number', label: 'DORSAL', field: (row) => row.number ?? row.dorsal, align: 'center', sortable: true },
+    { name: 'position', label: 'POSICIÓN', field: (row) => row.position || row.posicion, align: 'center', sortable: true },
+    { name: 'status', label: 'CONDICIÓN', field: (row) => row.status || row.condicion, align: 'center' },
+  ]"
+  row-key="_id"
+  flat
+  hide-pagination
+  :pagination="{ rowsPerPage: 0 }"
+  class="roster-sports-table"
+>
+
             <!-- PLAYER -->
             <template #body-cell-player="props">
               <q-td :props="props">

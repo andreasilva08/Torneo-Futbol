@@ -26,7 +26,6 @@ onMounted(async () => {
 const operationalItems = computed(() => [
   { label: 'Dashboard', icon: 'dashboard', to: '/' },
   { label: 'Partidos', icon: 'event', to: '/partidos', count: tournamentStore.matches.length },
-  { label: 'Jornadas', icon: 'calendar_month', to: '/partidos' },
   { label: 'Tabla de Posiciones', icon: 'table_chart', to: '/tabla' },
   { label: 'Equipos', icon: 'groups', to: '/equipos', count: tournamentStore.teams.length },
   { label: 'Jugadores', icon: 'sports_soccer', to: '/jugadores', count: tournamentStore.players.length },
