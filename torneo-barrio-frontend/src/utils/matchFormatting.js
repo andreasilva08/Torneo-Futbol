@@ -34,10 +34,14 @@ export const matchStatusColor = (status) => ({
   FINISHED: 'dark',
 }[normalizeMatchStatus(status)] || 'grey')
 
-export const eventTypeLabel = (type) => ({
-  GOAL: 'Gol',
-  ASSIST: 'Asistencia',
-  YELLOW_CARD: 'Tarjeta amarilla',
-  RED_CARD: 'Tarjeta roja',
-  OWN_GOAL: 'Autogol (Gol en contra)',
-}[type] || 'Evento')
+export const eventTypeLabel = (type) => {
+  const norm = String(type || '').toUpperCase()
+  if (norm === 'GOAL' || norm === 'GOL') return 'Gol'
+  if (norm === 'ASSIST' || norm.includes('ASISTENCIA')) return 'Asistencia'
+  if (norm === 'YELLOW_CARD' || norm.includes('AMARILLA')) return 'Tarjeta Amarilla'
+  if (norm === 'RED_CARD' || norm.includes('ROJA')) return 'Tarjeta Roja'
+  if (norm === 'OWN_GOAL' || norm.includes('AUTOGOL')) return 'Autogol (Gol en contra)'
+  if (norm === 'SUBSTITUTION' || norm.includes('SUSTITUCION') || norm.includes('CAMBIO')) return 'Sustitución'
+  if (norm === 'INJURY' || norm.includes('LESION')) return 'Lesión de Jugador'
+  return type || 'Evento'
+}

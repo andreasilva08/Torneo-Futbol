@@ -118,6 +118,10 @@ const form = reactive({
   team: '',
   status: 'TITULAR',
   photoUrl: '',
+  goals: 0,
+  assists: 0,
+  yellowCards: 0,
+  redCards: 0,
 })
 
 const teamFilterOptions = computed(() => [
@@ -307,6 +311,10 @@ const resetForm = () => {
     team: '',
     status: 'TITULAR',
     photoUrl: '',
+    goals: 0,
+    assists: 0,
+    yellowCards: 0,
+    redCards: 0,
   })
   editingId.value = null
 }
@@ -327,6 +335,10 @@ const openEditDialog = (player) => {
     team: player.team?._id || player.team || '',
     status: player.status || player.condicion || 'TITULAR',
     photoUrl: player.photoUrl || '',
+    goals: player.goals ?? player.goles ?? 0,
+    assists: player.assists ?? player.asistencias ?? 0,
+    yellowCards: player.yellowCards ?? player.tarjetasAmarillas ?? 0,
+    redCards: player.redCards ?? player.tarjetasRojas ?? 0,
   })
   editingId.value = player._id
   dialog.value = true
@@ -373,6 +385,14 @@ const savePlayer = async () => {
     status: form.status,
     condicion: form.status,
     photoUrl: form.photoUrl.trim(),
+    goals: Math.max(0, Number(form.goals) || 0),
+    goles: Math.max(0, Number(form.goals) || 0),
+    assists: Math.max(0, Number(form.assists) || 0),
+    asistencias: Math.max(0, Number(form.assists) || 0),
+    yellowCards: Math.max(0, Number(form.yellowCards) || 0),
+    tarjetasAmarillas: Math.max(0, Number(form.yellowCards) || 0),
+    redCards: Math.max(0, Number(form.redCards) || 0),
+    tarjetasRojas: Math.max(0, Number(form.redCards) || 0),
   }
 
   try {
@@ -549,6 +569,7 @@ onMounted(async () => {
     { name: 'position', label: 'POSICIÓN', field: (row) => row.position || row.posicion, align: 'left', sortable: true },
     { name: 'team', label: 'EQUIPO', field: (row) => row.team?.name || row.equipo, align: 'left', sortable: true },
     { name: 'status', label: 'CONDICIÓN', field: (row) => row.status || row.condicion, align: 'center', sortable: true },
+    { name: 'stats', label: 'ESTADÍSTICAS', field: (row) => row.goals ?? row.goles ?? 0, align: 'center', sortable: true },
     { name: 'actions', label: 'ACCIONES', field: 'actions', align: 'right' },
   ]"
   row-key="_id"
@@ -626,6 +647,26 @@ onMounted(async () => {
               <q-icon :name="getCondicionMeta(props.row.status || props.row.condicion).icon" size="13px" class="q-mr-xs" />
               {{ getCondicionMeta(props.row.status || props.row.condicion).label }}
             </span>
+          </q-td>
+        </template>
+
+        <!-- ESTADÍSTICAS (GOLES, ASISTENCIAS, TARJETAS) -->
+        <template #body-cell-stats="props">
+          <q-td :props="props" class="text-center">
+            <div class="row items-center justify-center gap-xs no-wrap">
+              <q-badge color="positive" class="q-px-xs q-py-xs" :title="`${props.row.goals ?? props.row.goles ?? 0} Goles anotados`">
+                ⚽ {{ props.row.goals ?? props.row.goles ?? 0 }}
+              </q-badge>
+              <q-badge color="info" class="q-px-xs q-py-xs" :title="`${props.row.assists ?? props.row.asistencias ?? 0} Asistencias`">
+                👟 {{ props.row.assists ?? props.row.asistencias ?? 0 }}
+              </q-badge>
+              <q-badge color="warning" text-color="dark" class="q-px-xs q-py-xs" :title="`${props.row.yellowCards ?? props.row.tarjetasAmarillas ?? 0} Amarillas`">
+                🟨 {{ props.row.yellowCards ?? props.row.tarjetasAmarillas ?? 0 }}
+              </q-badge>
+              <q-badge color="negative" class="q-px-xs q-py-xs" :title="`${props.row.redCards ?? props.row.tarjetasRojas ?? 0} Rojas`">
+                🟥 {{ props.row.redCards ?? props.row.tarjetasRojas ?? 0 }}
+              </q-badge>
+            </div>
           </q-td>
         </template>
 
@@ -768,6 +809,54 @@ onMounted(async () => {
               >
                 {{ numItem.value }}
               </button>
+            </div>
+          </div>
+
+          <!-- ESTADÍSTICAS OFICIALES DEL JUGADOR (GOLES, ASISTENCIAS, TARJETAS) -->
+          <div class="stats-form-section">
+            <div class="text-subtitle2 text-weight-bold q-mb-xs text-white">Estadísticas Acumuladas del Jugador</div>
+            <div class="text-caption text-grey-5 q-mb-sm">Modifica o ajusta el registro de goles, asistencias y sanciones disciplinarias.</div>
+            <div class="row q-col-gutter-sm">
+              <div class="col-6 col-sm-3">
+                <q-input
+                  v-model.number="form.goals"
+                  type="number"
+                  min="0"
+                  outlined
+                  dense
+                  label="Goles (GF) ⚽"
+                />
+              </div>
+              <div class="col-6 col-sm-3">
+                <q-input
+                  v-model.number="form.assists"
+                  type="number"
+                  min="0"
+                  outlined
+                  dense
+                  label="Asistencias 👟"
+                />
+              </div>
+              <div class="col-6 col-sm-3">
+                <q-input
+                  v-model.number="form.yellowCards"
+                  type="number"
+                  min="0"
+                  outlined
+                  dense
+                  label="Amarillas 🟨"
+                />
+              </div>
+              <div class="col-6 col-sm-3">
+                <q-input
+                  v-model.number="form.redCards"
+                  type="number"
+                  min="0"
+                  outlined
+                  dense
+                  label="Rojas 🟥"
+                />
+              </div>
             </div>
           </div>
 

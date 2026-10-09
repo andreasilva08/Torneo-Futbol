@@ -23,11 +23,21 @@ Permite gestionar equipos, plantillas de jugadores, fixtures por jornadas, actas
 
 ## 🚀 Características Principales
 
-- **🛡️ Gestión de Clubes / Equipos**: Creación, actualización y eliminación de equipos con nombre oficial, abreviatura (shortName), estadio y escudo.
-- **🏃‍♂️ Gestión de Jugadores**: Registro de futbolistas vinculados a su club con número de dorsal, posición en el campo y fotografía.
-- **📅 Fixture y Calendario por Jornadas**: Programación de partidos con fecha, hora y equipos rivales. Valida reglas de negocio (ej. un club no puede disputar la misma jornada dos veces).
-- **⏱️ Marcador y Acta en Vivo**: Registro de resultados, estado (`SCHEDULED`, `IN_PROGRESS`, `FINISHED`), autores de goles con minuto y asistencias.
-- **📊 Tabla de Posiciones Dinámica**: Cálculo automático de Puntos (Pts), Partidos Jugados (PJ), Ganados (PG), Empatados (PE), Perdidos (PP), Goles a Favor (GF), Goles en Contra (GC) y Diferencia de Gol (DG).
+- **🛡️ Gestión de Clubes / Equipos**: Creación, actualización y eliminación de equipos con nombre oficial, abreviatura (`shortName`), estadio y escudo (URL de logo opcional con fallback elegante).
+- **🏃‍♂️ Gestión de Jugadores**: Registro de futbolistas vinculados a su club con dorsal, posición, condición deportiva (`TITULAR`, `SUPLENTE`, `LESIONADO`, `SANCIONADO_ROJA`, `SANCIONADO_AMARILLAS`) y fotografía.
+- **📅 Fixture y Calendario por Jornadas**: Programación de partidos con fecha, hora y canchas. Validación de reglas de negocio (un club no puede disputar la misma jornada dos veces).
+- **⏱️ Marcador y Cronología Detallada en Vivo**:
+  - Registro de goles (autor, asistente, minuto y autogol) con recálculo automático del marcador en tiempo real.
+  - Visualización completa de participantes e incidencias divididas por lado de equipo (local / visitante).
+  - Posibilidad de **editar o eliminar eventos y goles en vivo** ante errores humanos antes de finalizar el encuentro.
+- **🟥 Control Disciplinario y Expulsiones Automáticas**:
+  - Detección inmediata de tarjeta roja directa o doble tarjeta amarilla acumulada en el mismo partido.
+  - Exclusión automática del jugador expulsado para cualquier evento posterior en el partido y actualización de su estado a `SANCIONADO_ROJA` o `SANCIONADO_AMARILLAS`.
+  - Validación de elegibilidad: únicamente jugadores en condición `TITULAR` o `SUPLENTE` pueden participar en los eventos.
+- **🔄 Sustituciones y Gestión de Lesionados**:
+  - Registro de sustituciones (`SUBSTITUTION`) vinculando el equipo, jugador saliente (⬇️) y jugador entrante (⬆️).
+  - Registro de lesiones (`INJURY`) con especificación de tiempo estimado de baja médica, sustitución obligatoria y actualización a condición `LESIONADO`.
+- **📊 Tabla de Posiciones Dinámica**: Cálculo de Pts, PJ, PG, PE, PP, GF, GC y DG en tiempo real.
 - **🥇 Tablas de Rendimiento (MongoDB Aggregation Pipelines)**:
   - Máximos Goleadores (Top Scorers).
   - Máximos Asistidores (Top Assists).
@@ -41,7 +51,7 @@ El proyecto está diseñado bajo un modelo **desacoplado Cliente-Servidor (Clien
 
 ```mermaid
 graph TD
-    Client[Cliente Web: Vue 3 + Vite + Pinia] -->|Peticiones HTTP REST| Backend[API REST: Node.js + Express]
+    Client[Cliente Web: Vue 3 + Vite + Quasar + Pinia] -->|Peticiones HTTP REST| Backend[API REST: Node.js + Express]
     Backend -->|Mongoose ODM / TCP Seguro| Database[(Base de Datos: MongoDB Atlas Cloud)]
 ```
 
@@ -49,16 +59,18 @@ graph TD
 - **Entorno de ejecución**: Node.js
 - **Framework web**: Express.js
 - **Base de datos**: MongoDB Atlas (Cloud)
-- **Modelado de datos (ODM)**: Mongoose
+- **Modelado de datos (ODM)**: Mongoose (con esquemas para `Team`, `Player` y `Match` con subdocumentos y validación)
 - **Variables de entorno**: dotenv
 - **Seguridad**: CORS configurable con lista blanca
 
 ### Frontend
-- **Framework**: Vue 3 (Composition API / Options API)
+- **Framework**: Vue 3 (Composition API con `<script setup>`)
+- **Biblioteca de Componentes**: Quasar Framework (v2) para diálogos, selectores, botones y notificaciones toast
 - **Empaquetador y Dev Server**: Vite
-- **Manejo de Estado Global**: Pinia (con stores modulares: `teams`, `players`, `stats`, `tournament`)
-- **Enrutamiento**: Vue Router
+- **Manejo de Estado Global**: Pinia (stores modulares: `teams`, `players`, `stats`, `tournament`)
+- **Enrutamiento**: Vue Router 4
 - **Cliente HTTP**: Axios (con interceptores para manejo centralizado de errores y tiempos de espera)
+- **Diseño**: Dark Sports UI con CSS vanilla adaptativo y responsive
 
 ---
 
@@ -66,7 +78,7 @@ graph TD
 
 ```text
 Torneo-Futbol-main/
-├── README.md                      # Documentación general del repositorio
+├── README.md                      # Documentación técnica general del repositorio
 ├── EXPOSICION_Y_AJUSTES.md        # Guía para exponer el proyecto y bitácora técnica
 │
 ├── torneo-barrio-backend/         # Servidor API REST (Node.js + Express)
@@ -78,15 +90,15 @@ Torneo-Futbol-main/
 │       ├── config/
 │       │   └── db.js              # Conexión optimizada a MongoDB Atlas con reconexión
 │       ├── controllers/
-│       │   ├── matchController.js # Lógica de partidos, fixture y actas
-│       │   ├── playerController.js# Lógica de jugadores y plantillas
+│       │   ├── matchController.js # Lógica de partidos, fixture, eventos, sanciones y actas
+│       │   ├── playerController.js# Lógica de jugadores, condiciones y plantillas
 │       │   ├── statsController.js # Pipelines de agregación (posiciones, goleadores)
 │       │   └── teamController.js  # Lógica de gestión de clubes
 │       ├── middleware/
 │       │   └── errorHandler.js    # Manejo centralizado de excepciones y errores HTTP
 │       ├── models/
-│       │   ├── Match.js           # Esquema de partidos, goles y eventos
-│       │   ├── Player.js          # Esquema de jugadores
+│       │   ├── Match.js           # Esquema de partidos, goles, eventos y sustituciones
+│       │   ├── Player.js          # Esquema de jugadores y estados disciplinarios
 │       │   └── Team.js            # Esquema de equipos
 │       └── routes/
 │           ├── matchRoutes.js
@@ -94,14 +106,14 @@ Torneo-Futbol-main/
 │           ├── statsRoutes.js
 │           └── teamRoutes.js
 │
-└── torneo-barrio-frontend/        # Interfaz de Usuario (Vue 3 + Vite)
+└── torneo-barrio-frontend/        # Interfaz de Usuario (Vue 3 + Vite + Quasar)
     ├── index.html
     ├── package.json
     ├── vite.config.js
-    ├── tsconfig.json              # Configuración limpia de compilador para tooling
+    ├── tsconfig.json              # Configuración de compilador para tooling
     └── src/
         ├── App.vue
-        ├── main.js                # Montaje de Vue, Pinia y Vue Router
+        ├── main.js                # Montaje de Vue, Pinia, Quasar y Vue Router
         ├── router/
         │   └── index.js           # Definición de rutas y vistas SPA
         ├── services/
@@ -111,13 +123,15 @@ Torneo-Futbol-main/
         │   ├── teams.js           # Store modular de equipos
         │   ├── players.js         # Store modular de jugadores
         │   └── stats.js           # Store modular de estadísticas y posiciones
+        ├── utils/
+        │   └── matchFormatting.js # Helpers de formato de incidencias y estados
         └── views/                 # Vistas de la aplicación
             ├── DashboardView.vue   # Panel central con resumen general
-            ├── TeamsView.vue       # Listado y creación de equipos
+            ├── TeamsView.vue       # Listado y creación de equipos (logo opcional)
             ├── TeamDetailView.vue  # Perfil y plantilla del equipo
-            ├── PlayersView.vue     # Catálogo de jugadores
+            ├── PlayersView.vue     # Catálogo y fichas de jugadores
             ├── MatchesView.vue     # Fixture por jornadas y filtros
-            ├── MatchDetailView.vue # Marcador y acta de partido en vivo
+            ├── MatchDetailView.vue # Cronología en vivo, goles, cambios y sanciones
             ├── StandingsView.vue   # Tabla de posiciones
             ├── ScorersView.vue     # Tabla de goleadores
             ├── AssistsView.vue     # Tabla de asistencias
@@ -199,7 +213,7 @@ Torneo-Futbol-main/
 | `GET` | `/api/teams` | Obtener listado de todos los equipos |
 | `GET` | `/api/teams/:id` | Obtener detalle de un equipo |
 | `GET` | `/api/teams/:id/players` | Obtener todos los jugadores del equipo |
-| `POST` | `/api/teams` | Crear un nuevo equipo |
+| `POST` | `/api/teams` | Crear un nuevo equipo (logo opcional) |
 | `PUT` | `/api/teams/:id` | Editar datos de un equipo |
 | `DELETE` | `/api/teams/:id` | Eliminar un equipo |
 
@@ -208,19 +222,19 @@ Torneo-Futbol-main/
 | :--- | :--- | :--- |
 | `GET` | `/api/players` | Listar jugadores (soporta paginación: `?page=1&limit=20`) |
 | `GET` | `/api/players/:id` | Obtener detalle de un jugador con su equipo |
-| `POST` | `/api/players` | Registrar un nuevo jugador |
-| `PUT` | `/api/players/:id` | Modificar datos de un jugador |
+| `POST` | `/api/players` | Registrar un nuevo jugador con condición inicial |
+| `PUT` | `/api/players/:id` | Modificar datos, dorsal o condición de un jugador |
 | `DELETE` | `/api/players/:id` | Eliminar un jugador |
 
 ### Partidos (`/api/matches`)
 | Método | Endpoint | Descripción |
 | :--- | :--- | :--- |
 | `GET` | `/api/matches` | Listar partidos (filtros: `?matchday=1`, `?status=FINISHED`, `?page=1&limit=10`) |
-| `GET` | `/api/matches/:id` | Detalle de un partido con alineaciones y goles |
+| `GET` | `/api/matches/:id` | Detalle de un partido con alineaciones, goles y eventos |
 | `POST` | `/api/matches` | Programar un nuevo partido |
 | `PUT` | `/api/matches/:id` | Modificar fecha o equipos del partido |
 | `PUT` | `/api/matches/:id/result` | Actualizar marcador, estado y lista de goles |
-| `PUT` | `/api/matches/:id/events` | Registrar eventos disciplinarios y asistencias |
+| `PUT` | `/api/matches/:id/events` | Registrar eventos disciplinarios, sustituciones y lesiones (aplica sanciones automáticas en BD) |
 | `DELETE` | `/api/matches/:id` | Cancelar/Eliminar un partido |
 
 ### Estadísticas y Posiciones (`/api`)
@@ -242,7 +256,7 @@ Incluye:
 - Ficha técnica y propuesta de valor del software.
 - Recorrido paso a paso de los flujos de usuario.
 - Explicación de las optimizaciones de base de datos implementadas.
-- Bitácora completa de los ajustes realizados hoy (MongoDB Atlas, Aggregation Pipelines, paginación, stores modulares).
+- Bitácora completa de los ajustes de sanciones disciplinarias, sustituciones, lesiones y actas en vivo.
 - Guía para responder preguntas del jurado.
 
 ---

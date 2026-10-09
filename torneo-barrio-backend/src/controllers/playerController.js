@@ -44,6 +44,12 @@ const formatPlayer = (doc) => {
     };
   }
 
+  // Normalizar estadísticas individuales
+  const goals = Number(p.goals !== undefined && p.goals !== null ? p.goals : (p.goles !== undefined && p.goles !== null ? p.goles : 0));
+  const assists = Number(p.assists !== undefined && p.assists !== null ? p.assists : (p.asistencias !== undefined && p.asistencias !== null ? p.asistencias : 0));
+  const yellowCards = Number(p.yellowCards !== undefined && p.yellowCards !== null ? p.yellowCards : (p.tarjetasAmarillas !== undefined && p.tarjetasAmarillas !== null ? p.tarjetasAmarillas : 0));
+  const redCards = Number(p.redCards !== undefined && p.redCards !== null ? p.redCards : (p.tarjetasRojas !== undefined && p.tarjetasRojas !== null ? p.tarjetasRojas : 0));
+
   return {
     ...p,
     name,
@@ -57,6 +63,14 @@ const formatPlayer = (doc) => {
     status,
     condicion: status,
     photoUrl: p.photoUrl || '',
+    goals,
+    goles: goals,
+    assists,
+    asistencias: assists,
+    yellowCards,
+    tarjetasAmarillas: yellowCards,
+    redCards,
+    tarjetasRojas: redCards,
   };
 };
 
@@ -117,6 +131,14 @@ const createPlayer = async (req, res) => {
       status,
       condicion,
       photoUrl,
+      goals,
+      goles,
+      assists,
+      asistencias,
+      yellowCards,
+      tarjetasAmarillas,
+      redCards,
+      tarjetasRojas,
     } = req.body;
 
     const playerName = name || nombre;
@@ -134,9 +156,14 @@ const createPlayer = async (req, res) => {
     if (team) {
       const teamExists = await Team.findById(team);
       if (teamExists) {
-        equipoName = teamExists.name;
+        equipoName = teamExists.name || teamExists.nombre;
       }
     }
+
+    const playerGoals = Number(goals !== undefined ? goals : (goles !== undefined ? goles : 0));
+    const playerAssists = Number(assists !== undefined ? assists : (asistencias !== undefined ? asistencias : 0));
+    const playerYellow = Number(yellowCards !== undefined ? yellowCards : (tarjetasAmarillas !== undefined ? tarjetasAmarillas : 0));
+    const playerRed = Number(redCards !== undefined ? redCards : (tarjetasRojas !== undefined ? tarjetasRojas : 0));
 
     const newPlayer = await Player.create({
       name: playerName,
@@ -150,6 +177,14 @@ const createPlayer = async (req, res) => {
       status: playerStatus,
       condicion: playerStatus,
       photoUrl: photoUrl || '',
+      goals: playerGoals,
+      goles: playerGoals,
+      assists: playerAssists,
+      asistencias: playerAssists,
+      yellowCards: playerYellow,
+      tarjetasAmarillas: playerYellow,
+      redCards: playerRed,
+      tarjetasRojas: playerRed,
     });
 
     res.status(201).json(formatPlayer(newPlayer));
@@ -186,10 +221,31 @@ const updatePlayer = async (req, res) => {
       body.condicion = body.status;
     }
 
+    if (body.goals !== undefined || body.goles !== undefined) {
+      const g = Number(body.goals !== undefined ? body.goals : body.goles);
+      body.goals = Math.max(0, g);
+      body.goles = body.goals;
+    }
+    if (body.assists !== undefined || body.asistencias !== undefined) {
+      const a = Number(body.assists !== undefined ? body.assists : body.asistencias);
+      body.assists = Math.max(0, a);
+      body.asistencias = body.assists;
+    }
+    if (body.yellowCards !== undefined || body.tarjetasAmarillas !== undefined) {
+      const y = Number(body.yellowCards !== undefined ? body.yellowCards : body.tarjetasAmarillas);
+      body.yellowCards = Math.max(0, y);
+      body.tarjetasAmarillas = body.yellowCards;
+    }
+    if (body.redCards !== undefined || body.tarjetasRojas !== undefined) {
+      const r = Number(body.redCards !== undefined ? body.redCards : body.tarjetasRojas);
+      body.redCards = Math.max(0, r);
+      body.tarjetasRojas = body.redCards;
+    }
+
     if (body.team) {
       const teamExists = await Team.findById(body.team);
       if (teamExists) {
-        body.equipo = teamExists.name;
+        body.equipo = teamExists.name || teamExists.nombre;
       }
     }
 

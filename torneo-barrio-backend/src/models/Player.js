@@ -54,6 +54,46 @@ const playerSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    goals: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    goles: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    assists: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    asistencias: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    yellowCards: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    tarjetasAmarillas: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    redCards: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    tarjetasRojas: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
   },
   {
     timestamps: true,
@@ -74,6 +114,18 @@ playerSchema.pre('save', function (next) {
 
   if (this.status && !this.condicion) this.condicion = this.status;
   if (this.condicion && !this.status) this.status = this.condicion;
+
+  if (this.goals !== undefined && this.goles === undefined) this.goles = this.goals;
+  if (this.goles !== undefined && this.goals === undefined) this.goals = this.goles;
+
+  if (this.assists !== undefined && this.asistencias === undefined) this.asistencias = this.assists;
+  if (this.asistencias !== undefined && this.assists === undefined) this.assists = this.asistencias;
+
+  if (this.yellowCards !== undefined && this.tarjetasAmarillas === undefined) this.tarjetasAmarillas = this.yellowCards;
+  if (this.tarjetasAmarillas !== undefined && this.yellowCards === undefined) this.yellowCards = this.tarjetasAmarillas;
+
+  if (this.redCards !== undefined && this.tarjetasRojas === undefined) this.tarjetasRojas = this.redCards;
+  if (this.tarjetasRojas !== undefined && this.redCards === undefined) this.redCards = this.tarjetasRojas;
 
   next();
 });

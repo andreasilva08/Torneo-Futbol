@@ -52,6 +52,8 @@ const getMatches = async (req, res) => {
             .populate('goals.player', PLAYER_FIELDS)
             .populate('goals.team', TEAM_FIELDS)
             .populate('events.player', PLAYER_FIELDS)
+            .populate('events.playerIn', PLAYER_FIELDS)
+            .populate('events.playerOut', PLAYER_FIELDS)
             .populate('events.team', TEAM_FIELDS)
             .sort({ matchday: 1, date: 1 });
 
@@ -81,6 +83,8 @@ const getMatchById = async (req, res) => {
             .populate('goals.player', PLAYER_FIELDS)
             .populate('goals.team', TEAM_FIELDS)
             .populate('events.player', PLAYER_FIELDS)
+            .populate('events.playerIn', PLAYER_FIELDS)
+            .populate('events.playerOut', PLAYER_FIELDS)
             .populate('events.team', TEAM_FIELDS);
 
         if (!match) {
@@ -243,38 +247,70 @@ const updateMatchResult = async (req, res) => {
 
         if (goals && Array.isArray(goals)) {
             const validTeamIds = [match.homeTeam.toString(), match.awayTeam.toString()];
+            const [homeTeamDoc, awayTeamDoc] = await Promise.all([
+                Team.findById(match.homeTeam),
+                Team.findById(match.awayTeam),
+            ]);
+
+            const homeTeamNames = [homeTeamDoc?.name, homeTeamDoc?.nombre].filter(Boolean).map(n => n.trim().toLowerCase());
+            const awayTeamNames = [awayTeamDoc?.name, awayTeamDoc?.nombre].filter(Boolean).map(n => n.trim().toLowerCase());
+
+            const sanitizedGoals = [];
 
             for (const goal of goals) {
-                if (!validTeamIds.includes(goal.team.toString())) {
+                const goalTeamId = goal.team ? goal.team.toString() : '';
+                if (!validTeamIds.includes(goalTeamId)) {
                     return res.status(400).json({
                         message: 'Uno de los goles está asignado a un equipo que no juega este partido'
                     });
                 }
 
-                // En autogol, el jugador autor pertenece a cualquiera de los dos equipos que juegan el partido
-                const isOwnGoal = Boolean(goal.isOwnGoal);
-                const playerBelongs = isOwnGoal
-                    ? await Player.exists({ _id: goal.player, $or: [{ team: match.homeTeam }, { team: match.awayTeam }] })
-                    : await Player.exists({ _id: goal.player, team: goal.team });
+                // En caso de que se pase ID de jugador, validar y sincronizar equipo si estaba vacío
+                if (goal.player) {
+                    const playerDoc = await Player.findById(goal.player);
+                    if (playerDoc) {
+                        const targetTeamDoc = goalTeamId === match.homeTeam.toString() ? homeTeamDoc : awayTeamDoc;
+                        const otherTeamDoc = goalTeamId === match.homeTeam.toString() ? awayTeamDoc : homeTeamDoc;
+                        const isOwnGoal = Boolean(goal.isOwnGoal || goal.isAutogol);
 
-                if (!playerBelongs) {
-                    return res.status(400).json({
-                        message: isOwnGoal
-                            ? `El jugador del autogol no pertenece a los equipos participantes`
-                            : `El jugador no pertenece al equipo asignado para el gol`
-                    });
+                        // Si el jugador no tenía equipo vinculado o tenía solo string, asociar su ID
+                        if (!playerDoc.team) {
+                            const assignTeam = isOwnGoal && otherTeamDoc ? otherTeamDoc : targetTeamDoc;
+                            if (assignTeam) {
+                                playerDoc.team = assignTeam._id;
+                                playerDoc.equipo = assignTeam.name || assignTeam.nombre || playerDoc.equipo;
+                                await playerDoc.save();
+                            }
+                        }
+                    }
                 }
+
+                // Limpiar assistPlayer para no causar CastError si llega vacío o 'null'
+                const assistPlayerId = (goal.assistPlayer && String(goal.assistPlayer).trim() !== '' && String(goal.assistPlayer) !== 'null')
+                    ? goal.assistPlayer
+                    : null;
+
+                sanitizedGoals.push({
+                    player: goal.player || null,
+                    scorer: goal.scorer || '',
+                    team: goal.team,
+                    minute: Number(goal.minute) || 1,
+                    assistPlayer: assistPlayerId,
+                    assist: goal.assist || '',
+                    isOwnGoal: Boolean(goal.isOwnGoal || goal.isAutogol),
+                    isAutogol: Boolean(goal.isOwnGoal || goal.isAutogol),
+                });
             }
 
             if (typeof homeScore === 'number' && typeof awayScore === 'number') {
-                const homeGoals = goals.filter((g) => g.team.toString() === match.homeTeam.toString()).length;
-                const awayGoals = goals.filter((g) => g.team.toString() === match.awayTeam.toString()).length;
+                const homeGoals = sanitizedGoals.filter((g) => g.team.toString() === match.homeTeam.toString()).length;
+                const awayGoals = sanitizedGoals.filter((g) => g.team.toString() === match.awayTeam.toString()).length;
                 if (homeGoals !== homeScore || awayGoals !== awayScore) {
                     return res.status(400).json({ message: 'El número de goles no coincide con el marcador ingresado' });
                 }
             }
 
-            match.goals = goals;
+            match.goals = sanitizedGoals;
         }
 
         if (typeof homeScore === 'number') match.homeScore = homeScore;
@@ -305,27 +341,78 @@ const updateMatchEvents = async (req, res) => {
         }
 
         const validTeamsIds = [match.homeTeam.toString(), match.awayTeam.toString()];
+        const [homeTeamDoc, awayTeamDoc] = await Promise.all([
+            Team.findById(match.homeTeam),
+            Team.findById(match.awayTeam),
+        ]);
+
+        const sanitizedEvents = [];
+
+        // Rastrear tarjetas amarillas y eventos por jugador en este partido
+        const yellowCounts = new Map();
 
         for (const event of events) {
-            if (!validTeamsIds.includes(event.team.toString())) {
+            const eventTeamId = event.team ? event.team.toString() : '';
+            if (eventTeamId && !validTeamsIds.includes(eventTeamId)) {
                 return res.status(400).json({
                     message: 'El evento está asignado a un equipo que no está jugando este partido'
                 });
             }
 
-            const isOwnGoalEvent = event.type === 'OWN_GOAL';
-            const playerBelongsToTeam = isOwnGoalEvent
-                ? await Player.exists({ _id: event.player, $or: [{ team: match.homeTeam }, { team: match.awayTeam }] })
-                : await Player.exists({ _id: event.player, team: event.team });
+            const evType = String(event.type || '').toUpperCase();
 
-            if (!playerBelongsToTeam) {
-                return res.status(400).json({
-                    message: `El jugador ${event.player} no pertenece a los equipos del partido`
-                });
+            // Vincular y actualizar condición del jugador principal
+            if (event.player) {
+                const playerDoc = await Player.findById(event.player);
+                if (playerDoc) {
+                    const targetTeam = eventTeamId === match.homeTeam.toString() ? homeTeamDoc : awayTeamDoc;
+                    if (!playerDoc.team && targetTeam) {
+                        playerDoc.team = targetTeam._id;
+                        playerDoc.equipo = targetTeam.name || targetTeam.nombre || playerDoc.equipo;
+                    }
+
+                    if (evType === 'RED_CARD' || evType.includes('ROJA')) {
+                        playerDoc.status = 'SANCIONADO_ROJA';
+                        playerDoc.condicion = 'SANCIONADO_ROJA';
+                    } else if (evType === 'YELLOW_CARD' || evType.includes('AMARILLA')) {
+                        const currentCount = (yellowCounts.get(playerDoc._id.toString()) || 0) + 1;
+                        yellowCounts.set(playerDoc._id.toString(), currentCount);
+                        if (currentCount >= 2) {
+                            playerDoc.status = 'SANCIONADO_AMARILLAS';
+                            playerDoc.condicion = 'SANCIONADO_AMARILLAS';
+                        }
+                    } else if (evType === 'INJURY' || evType.includes('LESION')) {
+                        playerDoc.status = 'LESIONADO';
+                        playerDoc.condicion = 'LESIONADO';
+                    }
+
+                    await playerDoc.save();
+                }
             }
+
+            // Si es sustitución por lesión y viene el jugador que sale (lesionado)
+            if (event.playerOut && (evType === 'INJURY' || evType.includes('LESION'))) {
+                const outDoc = await Player.findById(event.playerOut);
+                if (outDoc) {
+                    outDoc.status = 'LESIONADO';
+                    outDoc.condicion = 'LESIONADO';
+                    await outDoc.save();
+                }
+            }
+
+            sanitizedEvents.push({
+                type: event.type,
+                player: event.player || null,
+                team: event.team || null,
+                minute: Number(event.minute) || 1,
+                playerIn: event.playerIn || null,
+                playerOut: event.playerOut || null,
+                injuryTime: event.injuryTime || '',
+                description: event.description || '',
+            });
         }
 
-        match.events = events;
+        match.events = sanitizedEvents;
         await match.save();
 
         await match.populate('homeTeam', TEAM_FIELDS);
@@ -333,6 +420,8 @@ const updateMatchEvents = async (req, res) => {
         await match.populate('goals.player', PLAYER_FIELDS);
         await match.populate('goals.team', TEAM_FIELDS);
         await match.populate('events.player', PLAYER_FIELDS);
+        await match.populate('events.playerIn', PLAYER_FIELDS);
+        await match.populate('events.playerOut', PLAYER_FIELDS);
         await match.populate('events.team', TEAM_FIELDS);
 
         res.status(200).json(formatMatch(match));

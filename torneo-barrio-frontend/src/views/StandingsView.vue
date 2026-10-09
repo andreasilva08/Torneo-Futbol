@@ -99,15 +99,15 @@ onMounted(async () => {
               <div class="row items-center no-wrap gap-md">
                 <div class="sport-crest-container standings-crest-box">
                   <ImagePreview
-                    :src="props.row.logoUrl"
+                    :src="props.row.logoUrl || props.row.escudo_url"
                     fallback="/images/default-team.svg"
-                    :alt="`Escudo de ${props.row.name || 'equipo'}`"
+                    :alt="`Escudo de ${props.row.name || props.row.nombre || 'equipo'}`"
                     width="36px"
                     height="36px"
                   />
                 </div>
                 <div>
-                  <div class="standings-team-name">{{ props.row.name }}</div>
+                  <div class="standings-team-name">{{ props.row.name || props.row.nombre }}</div>
                   <div class="standings-team-subtext">{{ getTeamSubtext(props.row) }}</div>
                 </div>
               </div>

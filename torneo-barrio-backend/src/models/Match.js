@@ -5,60 +5,89 @@ const goalSchema = new mongoose.Schema(
     player: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Player',
-      required: [true, 'El gol debe tener un jugador asociado']
+      default: null,
+    },
+    scorer: {
+      type: String,
+      default: '',
     },
     team: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Team',
-      required: [true, 'El gol debe tener un equipo asociado']
+      default: null,
     },
     minute: {
       type: Number,
       required: [true, 'El minuto del gol es obligatorio'],
       min: [0, 'El minuto no puede ser negativo'],
-      max: [120, 'El minuto no puede superar 120']
+      max: [120, 'El minuto no puede superar 120'],
+      default: 1,
     },
     assistPlayer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Player',
-      default: null
+      default: null,
+    },
+    assist: {
+      type: String,
+      default: '',
     },
     isOwnGoal: {
       type: Boolean,
-      default: false
-    }
+      default: false,
+    },
+    isAutogol: {
+      type: Boolean,
+      default: false,
+    },
   },
-  { _id: false }
+  { strict: false }
 );
 
 const eventSchema = new mongoose.Schema(
   {
     type: {
       type: String,
-      enum: {
-        values: ['ASSIST', 'YELLOW_CARD', 'RED_CARD', 'OWN_GOAL'],
-        message: '{VALUE} no es un tipo de evento válido'
-      },
-      required: [true, 'El tipo de evento es obligatorio']
+      required: [true, 'El tipo de evento es obligatorio'],
+      default: 'YELLOW_CARD',
     },
     player: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Player',
-      required: [true, 'El evento debe tener un jugador asociado']
+      default: null,
     },
     team: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Team',
-      required: [true, 'El evento debe tener un equipo asociado']
+      default: null,
     },
     minute: {
       type: Number,
       required: [true, 'El minuto del evento es obligatorio'],
       min: [0, 'El minuto no puede ser negativo'],
-      max: [120, 'El minuto no puede superar 120']
-    }
+      max: [120, 'El minuto no puede superar 120'],
+      default: 1,
+    },
+    playerIn: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Player',
+      default: null,
+    },
+    playerOut: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Player',
+      default: null,
+    },
+    injuryTime: {
+      type: String,
+      default: '',
+    },
+    description: {
+      type: String,
+      default: '',
+    },
   },
-  { _id: false }
+  { strict: false }
 );
 
 const matchSchema = new mongoose.Schema(

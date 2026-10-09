@@ -230,6 +230,25 @@ Durante la sesión de trabajo de hoy, se ejecutó una refactorización técnica 
 
 ---
 
+### 8. Gestión de Actas en Vivo, Sanciones Automáticas y Sustituciones
+- **Visualización de participantes en la cronología**:
+  - Se corrigió la asignación de bandos (`home` / `away` / `neutral`), permitiendo que eventos y goles sin ID de club explícito o importados se resuelvan por coincidencia de jugadores y dispongan de tarjetas de visualización claras con autor, asistente, minutos y tarjetas.
+- **Control de expulsiones y doble tarjeta amarilla**:
+  - Detección reactiva de expulsiones (roja directa o acumulación de dos amarillas en el mismo partido).
+  - Bloqueo inmediato del futbolista expulsado para eventos posteriores en el encuentro.
+  - Actualización automática en MongoDB a `SANCIONADO_ROJA` o `SANCIONADO_AMARILLAS`.
+- **Filtro estricto de elegibilidad deportiva**:
+  - Únicamente jugadores con condición `TITULAR` o `SUPLENTE` pueden participar en los eventos del partido.
+- **Sustituciones y gestión médica de lesiones**:
+  - Registro de cambio (`SUBSTITUTION`) vinculando jugador saliente (⬇️) y entrante (⬆️).
+  - Registro de lesiones (`INJURY`) solicitando tiempo de incapacidad/baja médica estimada, exigiendo sustitución obligatoria del jugador que entra y actualizando el estado del futbolista a `LESIONADO`.
+- **Edición y eliminación en vivo con recálculo de marcador**:
+  - Permite corregir o eliminar cualquier gol o tarjeta ingresado por error humano mientras el partido no esté finalizado (`!isFinished`), sincronizando el tanteador en tiempo real.
+- **Escudo de equipo opcional**:
+  - Se flexibilizó el registro y edición de clubes en `TeamsView.vue` para que la URL del logo sea voluntaria, mostrando un avatar elegante por defecto cuando no se proporcione.
+
+---
+
 ## 🎙️ 5. Guión Sugerido para la Exposición Oral (Pitch de 5 a 7 Minutos)
 
 Si vas a presentar el proyecto ante un profesor, jurado evaluador o cliente, puedes guiarte con este orden:

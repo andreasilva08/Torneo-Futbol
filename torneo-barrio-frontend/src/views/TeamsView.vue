@@ -154,10 +154,6 @@ const saveTeam = async () => {
       savedTeam = await store.createTeam(payload)
     }
 
-    if (savedTeam.logoUrl !== payload.logoUrl) {
-      throw new Error('La API no confirmó la URL del escudo. Revisa la respuesta del servidor.')
-    }
-
     closeDialog()
     $q.notify({ type: 'positive', message: 'Equipo guardado correctamente.' })
   } catch (error) {
@@ -539,11 +535,10 @@ onMounted(async () => {
               <q-input
                 v-model="form.logoUrl"
                 label="URL del Escudo (Opcional)"
-                placeholder="https://..."
-                type="url"
+                placeholder="https://... (o dejar vacío)"
                 outlined
                 stack-label
-                :rules="imageUrlRules"
+                clearable
               >
                 <template #prepend>
                   <q-icon name="image" />

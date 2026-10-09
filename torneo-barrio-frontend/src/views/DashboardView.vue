@@ -88,8 +88,8 @@ const topLeaders = computed(() => {
   }
   return store.teams.slice(0, 5).map((t, idx) => ({
     position: idx + 1,
-    name: t.name,
-    logoUrl: t.logoUrl,
+    name: t.name || t.nombre || 'Equipo',
+    logoUrl: t.logoUrl || t.escudo_url || '',
     points: 0,
     goalDifference: 0,
     played: 0,
@@ -100,14 +100,15 @@ const topScorersList = computed(() => {
   return store.scorers.slice(0, 5)
 })
 
-const playerLabel = (playerId) => {
+const playerLabel = (playerId, fallbackName) => {
+  if (fallbackName) return fallbackName
   const player = store.players.find((item) => item._id === getId(playerId))
-  return player?.name || 'Jugador'
+  return player?.name || player?.nombre || 'Jugador'
 }
 
 const teamLabel = (teamId) => {
   const team = store.teams.find((item) => item._id === getId(teamId))
-  return team?.name || 'Equipo'
+  return team?.name || team?.nombre || 'Equipo'
 }
 
 const recentEvents = computed(() => store.matches.flatMap((match) => {
@@ -119,7 +120,7 @@ const recentEvents = computed(() => store.matches.flatMap((match) => {
   return events.map((event) => ({
     ...event,
     typeLabel: eventTypeLabel(event.type),
-    playerLabel: playerLabel(event.player),
+    playerLabel: playerLabel(event.player, event.scorer),
     teamLabel: teamLabel(event.team),
     match,
   }))
@@ -345,7 +346,7 @@ onUnmounted(() => {
                       <span class="activity-minute">minuto {{ event.minute }}'</span>
                     </div>
                     <div class="activity-sub">
-                      {{ event.teamLabel }} · {{ event.match.homeTeam?.name }} vs {{ event.match.awayTeam?.name }}
+                      {{ event.teamLabel }} · {{ event.match.homeTeam?.name || event.match.homeTeam?.nombre || 'Local' }} vs {{ event.match.awayTeam?.name || event.match.awayTeam?.nombre || 'Visitante' }}
                     </div>
                   </div>
 
