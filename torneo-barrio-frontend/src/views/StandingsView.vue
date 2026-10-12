@@ -1,13 +1,20 @@
 <script setup>
 import { computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useTournamentStore } from '@/stores/tournament'
 import ImagePreview from '@/components/ImagePreview.vue'
 
 const store = useTournamentStore()
+const router = useRouter()
+
+const totalTeams = computed(() => store.standings.length)
 
 const positionStyles = (position) => {
   if (position === 1) return 'standings-rank standings-rank--champion'
   if (position >= 2 && position <= 4) return 'standings-rank standings-rank--playoff'
+  if (totalTeams.value > 5 && position > totalTeams.value - 2) {
+    return 'standings-rank standings-rank--relegation'
+  }
   return 'standings-rank standings-rank--regular'
 }
 
@@ -17,14 +24,40 @@ const goalDiffClass = (value) => {
   return 'dg-badge dg-badge--neutral'
 }
 
-const getTeamSubtext = (row) => {
-  if (row.cleanSheets !== undefined && row.cleanSheets !== null) {
-    return `${row.cleanSheets} vallas invictas`
+const getTeamNeighborhood = (row) => {
+  return row.neighborhood || row.barrio || ''
+}
+
+const getMovement = (row) => {
+  if (row.movement) return row.movement
+  if (row.previousPosition !== undefined && row.previousPosition !== null) {
+    if (row.position < row.previousPosition) return 'UP'
+    if (row.position > row.previousPosition) return 'DOWN'
+    return 'SAME'
   }
-  if (row.neighborhood) {
-    return `${row.neighborhood} · 0 vallas invictas`
+  return 'SAME'
+}
+
+const getMovementTooltip = (row) => {
+  const mov = getMovement(row)
+  const diff = row.movementDiff || (row.previousPosition ? Math.abs(row.previousPosition - row.position) : 0)
+  if (mov === 'UP') {
+    return diff > 0
+      ? `▲ Subió ${diff} puesto${diff > 1 ? 's' : ''} respecto a la jornada anterior (ant: #${row.previousPosition})`
+      : '▲ Subió posiciones respecto a la jornada anterior'
   }
-  return '0 vallas invictas'
+  if (mov === 'DOWN') {
+    return diff > 0
+      ? `▼ Bajó ${diff} puesto${diff > 1 ? 's' : ''} respecto a la jornada anterior (ant: #${row.previousPosition})`
+      : '▼ Bajó posiciones respecto a la jornada anterior'
+  }
+  return '▬ Mantuvo su posición respecto a la jornada anterior'
+}
+
+const goToTeamDetail = (teamId) => {
+  if (teamId) {
+    router.push({ name: 'team-detail', params: { id: teamId } })
+  }
 }
 
 onMounted(async () => {
@@ -47,7 +80,10 @@ onMounted(async () => {
       </div>
 
       <div class="row items-center q-gutter-sm">
-        <q-badge color="primary" class="q-px-sm q-py-xs text-weight-bolder" style="font-size: 0.76rem;">
+        <q-badge color="primary" class="q-px-sm q-py-xs text-weight-bolder" style="font-size: 1rem; 
+          border-radius: 8px; 
+          padding: 12px 14px; 
+        ">
           LIGA REGULAR
         </q-badge>
       </div>
@@ -84,19 +120,35 @@ onMounted(async () => {
           row-key="_id"
           flat
           hide-pagination
+          :pagination="{ rowsPerPage: 0 }"
           class="standings-sports-table"
         >
-          <!-- POSITION CELL -->
+          <!-- POSITION CELL CON MOVIMIENTO DETALLADO (ASCENSO, DESCENSO, MANTENIDO) -->
           <template #body-cell-position="props">
             <q-td :props="props" class="text-center">
-              <span :class="positionStyles(props.row.position)">{{ props.row.position }}</span>
+              <div class="row items-center justify-center no-wrap gap-xs">
+                <span :class="positionStyles(props.row.position)">{{ props.row.position }}</span>
+                <span
+                  class="movement-indicator"
+                  :class="`movement-indicator--${getMovement(props.row).toLowerCase()}`"
+                  :title="getMovementTooltip(props.row)"
+                >
+                  <span v-if="getMovement(props.row) === 'UP'" class="movement-arrow movement-arrow--up" style="padding-left: 20px;margin-left: 20px;">▲</span>
+                  <span v-else-if="getMovement(props.row) === 'DOWN'" class="movement-arrow movement-arrow--down" style="padding-left: 20px;margin-left: 20px;">▼</span>
+                  <span v-else class="movement-arrow movement-arrow--same" style="padding-left: 20px;margin-left: 20px;">▬</span>
+                </span>
+              </div>
             </q-td>
           </template>
 
-          <!-- TEAM CELL -->
+          <!-- TEAM CELL INTERACTIVO (CLIC EN NOMBRE O ESCUDO -> PLANTEL DEL EQUIPO) -->
           <template #body-cell-team="props">
             <q-td :props="props">
-              <div class="row items-center no-wrap gap-md">
+              <div
+                class="row items-center no-wrap gap-md standings-team-row cursor-pointer"
+                @click="goToTeamDetail(props.row._id)"
+                :title="`Ver plantel oficial de ${props.row.name || props.row.nombre}`"
+              >
                 <div class="sport-crest-container standings-crest-box">
                   <ImagePreview
                     :src="props.row.logoUrl || props.row.escudo_url"
@@ -107,8 +159,13 @@ onMounted(async () => {
                   />
                 </div>
                 <div>
-                  <div class="standings-team-name">{{ props.row.name || props.row.nombre }}</div>
-                  <div class="standings-team-subtext">{{ getTeamSubtext(props.row) }}</div>
+                  <div class="standings-team-name standings-team-name--interactive">
+                    {{ props.row.name || props.row.nombre }}
+                    <q-icon name="open_in_new" size="13px" class="q-ml-xs hover-icon" />
+                  </div>
+                  <div v-if="getTeamNeighborhood(props.row)" class="standings-team-subtext">
+                    {{ getTeamNeighborhood(props.row) }}
+                  </div>
                 </div>
               </div>
             </q-td>
@@ -169,22 +226,42 @@ onMounted(async () => {
           Aún no hay datos suficientes de partidos disputados para calcular la tabla.
         </div>
 
-        <!-- LEYENDA Y CRITERIO DE DESEMPATE (FOOTER) -->
-        <div class="standings-footer row items-center justify-between q-mt-lg q-pt-md">
-          <div class="row items-center gap-md">
-            <div class="row items-center gap-xs text-caption">
-              <span class="legend-dot legend-dot--champion"></span>
-              <span class="text-weight-bold text-white">1º Puesto:</span>
-              <span class="text-grey-4">Campeón de Barrio</span>
+        <!-- LEYENDA EXPLICATIVA CON COLORES DE ZONA Y MOVIMIENTO (FOOTER) -->
+        <div class="standings-footer q-mt-lg q-pt-md">
+          <div class="row items-center justify-between q-col-gutter-md">
+            <!-- COLORES DE ZONA DE LA TABLA -->
+            <div class="row items-center gap-md flex-wrap">
+              <div class="row items-center gap-xs text-caption">
+                <span class="legend-dot legend-dot--champion" style="margin-right: 10px;"></span>
+                <span class="text-weight-bold text-white" style="padding-left: 10px;">1º:</span>
+                <span class="text-grey-4">Zona de Campeón</span>
+              </div>
+              <div class="row items-center gap-xs text-caption">
+                <span class="legend-dot legend-dot--playoff" style="margin-left: 10px;"></span>
+                <span class="text-weight-bold text-white" style="padding-left: 10px;">2º - 4º:</span>
+                <span class="text-grey-4">Zona de Liguilla</span>
+              </div>
             </div>
-            <div class="row items-center gap-xs text-caption">
-              <span class="legend-dot legend-dot--playoff"></span>
-              <span class="text-weight-bold text-white">2º - 4º:</span>
-              <span class="text-grey-4">Clasificación a Liguilla</span>
+
+            <!-- MOVIMIENTO EN LA TABLA RESPECTO A JORNADA ANTERIOR -->
+            <div class="row items-center gap-md flex-wrap">
+              <div class="row items-center gap-xs text-caption">
+                <span class="movement-legend-icon movement-arrow--up" style="margin-left: 10px;">▲</span>
+                <span class="text-grey-4">Sube posición</span>
+              </div>
+              <div class="row items-center gap-xs text-caption">
+                <span class="movement-legend-icon movement-arrow--down" style="margin-left: 10px;">▼</span>
+                <span class="text-grey-4">Baja posición</span>
+              </div>
+              <div class="row items-center gap-xs text-caption">
+                <span class="movement-legend-icon movement-arrow--same" style="margin-left: 10px;">▬</span>
+                <span class="text-grey-4">Mantiene posición</span>
+              </div>
             </div>
           </div>
-          <div class="text-caption text-grey-5 text-right standings-tiebreaker">
-            Criterio: Puntos → Diferencia de Gol → Goles a Favor → Partidos Ganados
+
+          <div class="text-caption text-grey-5 text-center q-mt-md standings-tiebreaker">
+            Criterio de desempate: Puntos → Diferencia de Gol → Goles a Favor → Enfrentamiento Directo
           </div>
         </div>
       </q-card-section>
@@ -193,6 +270,7 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+
 .standings-page {
   animation: fadeIn 0.3s ease;
 }
@@ -266,7 +344,66 @@ onMounted(async () => {
   color: #94a3b8 !important;
 }
 
-/* Team Crest & Names */
+/* Movement Indicators (▲ ▼ ▬) */
+.movement-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 0.76rem;
+  font-weight: 900;
+  cursor: help;
+  user-select: none;
+}
+
+.movement-arrow--up {
+  color: #22c55e;
+  text-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
+}
+
+.movement-arrow--down {
+  color: #ef4444;
+  text-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+}
+
+.movement-arrow--same {
+  color: #64748b;
+  font-size: 0.68rem;
+}
+
+.movement-legend-icon {
+  font-weight: 900;
+  font-size: 0.8rem;
+}
+
+/* Team Crest, Interactive Name & Links */
+.standings-team-row {
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.standings-team-row:hover .standings-crest-box {
+  border-color: var(--tb-primary);
+  transform: scale(1.08);
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
+}
+
+.standings-team-row:hover .standings-team-name--interactive {
+  color: var(--tb-primary);
+}
+
+.standings-team-row .hover-icon {
+  opacity: 0;
+  color: var(--tb-primary);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.standings-team-row:hover .hover-icon {
+  opacity: 1;
+  transform: translate(2px, -2px);
+}
+
 .standings-crest-box {
   width: 40px;
   height: 40px;
@@ -277,6 +414,8 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   background: var(--tb-surface-raised);
+  transition: all 0.2s ease;
+  margin-right: 10px;
 }
 
 .standings-team-name {
@@ -284,6 +423,7 @@ onMounted(async () => {
   font-weight: 700;
   color: #ffffff;
   letter-spacing: -0.01em;
+  transition: color 0.15s ease;
 }
 
 .standings-team-subtext {
@@ -356,18 +496,22 @@ onMounted(async () => {
   height: 10px;
   border-radius: 50%;
   display: inline-block;
+  margin-right: 4px;
 }
 
 .legend-dot--champion {
-  background: #f97316;
-  box-shadow: 0 0 6px #f97316;
-  margin-inline: 10px;
+  background: #facc15;
+  box-shadow: 0 0 6px #facc15;
 }
 
 .legend-dot--playoff {
   background: #2563eb;
   box-shadow: 0 0 6px #2563eb;
-  margin-inline: 10px;
+}
+
+.legend-dot--relegation {
+  background: #ef4444;
+  box-shadow: 0 0 6px #ef4444;
 }
 
 .standings-tiebreaker {
@@ -378,7 +522,7 @@ onMounted(async () => {
   .standings-footer {
     flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
+    gap: 12px;
   }
   .standings-tiebreaker {
     text-align: left;

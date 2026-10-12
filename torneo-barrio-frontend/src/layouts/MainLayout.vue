@@ -50,7 +50,7 @@ const goTo = (path) => {
 </script>
 
 <template>
-  <q-layout view="hHh lpR fFf" class="dark-sports-layout">
+  <q-layout view="hHh Lpr fFf" class="dark-sports-layout">
     <!-- TOP HEADER -->
     <q-header class="top-sports-header">
       <q-toolbar class="q-px-md q-px-md-lg">
@@ -100,13 +100,14 @@ const goTo = (path) => {
       </q-toolbar>
     </q-header>
 
-    <!-- SIDEBAR DRAWER -->
+    <!-- SIDEBAR DRAWER (FIXED NAVIGATION MENU) -->
     <q-drawer
       v-model="uiStore.sidebarOpen"
       show-if-above
       :width="260"
       bordered
       class="sports-sidebar"
+      persistent
     >
       <q-list padding class="q-px-sm q-py-md">
         <!-- GRUPO 1: GESTIÓN OPERATIVA -->
@@ -215,6 +216,7 @@ const goTo = (path) => {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  overflow-y: auto;
 }
 
 .sidebar-footer {

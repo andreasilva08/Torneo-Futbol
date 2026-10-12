@@ -401,6 +401,7 @@ onMounted(async () => {
           row-key="_id"
           flat
           hide-pagination
+          :pagination="{ rowsPerPage: 0 }"
         >
           <template #body-cell-logo="props">
             <q-td :props="props" class="text-center">

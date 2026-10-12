@@ -48,7 +48,7 @@ const kpiMetrics = computed(() => [
   {
     label: 'Goles Anotados',
     value: store.totalGoals,
-    subtext: 'Promedio de gol activo',
+    subtext: 'Goles del torneo',
     icon: 'sports_soccer',
     color: '#eab308',
     bgColor: 'rgba(234, 179, 8, 0.15)',
@@ -471,44 +471,6 @@ onUnmounted(() => {
             </div>
           </q-card>
         </div>
-
-        <!-- WIDGET 3: ACCESOS RÁPIDOS -->
-        <div class="q-mb-lg">
-          <div class="section-title-bar q-mb-md">
-            <h2 class="section-heading">ACCESOS RÁPIDOS</h2>
-          </div>
-
-          <div class="column q-gutter-sm">
-            <q-btn
-              unelevated
-              to="/partidos"
-              class="quick-action-btn"
-              icon="event"
-              label="Fixture y Jornadas"
-            />
-            <q-btn
-              unelevated
-              to="/equipos"
-              class="quick-action-btn"
-              icon="groups"
-              label="Gestión de Equipos"
-            />
-            <q-btn
-              unelevated
-              to="/jugadores"
-              class="quick-action-btn"
-              icon="sports_soccer"
-              label="Plantilla de Jugadores"
-            />
-            <q-btn
-              unelevated
-              to="/tabla"
-              class="quick-action-btn"
-              icon="table_chart"
-              label="Tabla de Posiciones"
-            />
-          </div>
-        </div>
       </div>
     </div>
   </div>
@@ -856,24 +818,5 @@ onUnmounted(() => {
   font-size: 0.74rem;
   color: var(--tb-muted);
   margin-top: 2px;
-}
-
-/* Quick Action Buttons */
-.quick-action-btn {
-  background: var(--tb-surface) !important;
-  border: 1px solid var(--tb-border) !important;
-  color: #ffffff !important;
-  font-weight: 700 !important;
-  font-size: 0.85rem !important;
-  padding: 12px 16px !important;
-  justify-content: flex-start !important;
-  transition: all 0.2s ease !important;
-}
-
-.quick-action-btn:hover {
-  background: var(--tb-surface-raised) !important;
-  border-color: var(--tb-primary) !important;
-  color: var(--tb-primary) !important;
-  transform: translateX(4px);
 }
 </style>

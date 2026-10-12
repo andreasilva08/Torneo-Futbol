@@ -677,15 +677,42 @@ const removeItem = (event) => {
   })
 }
 
-// ─── Finalización del Encuentro ──────────────────────────────────────────────
+// ─── Inicio del Encuentro (Poner EN VIVO con Bandera Verde) ─────────────────
+const startMatch = () => {
+  $q.dialog({
+    title: 'Iniciar Partido (Poner EN VIVO)',
+    message: '¿Confirmas el inicio del partido? El estado cambiará a EN VIVO (Bandera Verde) y se habilitará el registro de incidencias en tiempo real.',
+    cancel: { label: 'Cancelar', color: 'grey-5', flat: true },
+    ok: { label: '🏁 Iniciar Partido (EN VIVO)', color: 'positive' },
+    persistent: true,
+  }).onOk(async () => {
+    try {
+      const goals = apiGoals()
+      await store.updateMatchResult(match.value._id, {
+        homeScore: scoreFor(getId(match.value.homeTeam), goals),
+        awayScore: scoreFor(getId(match.value.awayTeam), goals),
+        status: 'IN_PROGRESS',
+        goals,
+      })
+      $q.notify({
+        type: 'positive',
+        message: '¡Partido iniciado! Encuentro oficialmente EN VIVO 🟢 🏁',
+        icon: 'flag',
+      })
+    } catch (error) {
+      $q.notify({ type: 'negative', message: getApiErrorMessage(error) })
+    }
+  })
+}
+
+// ─── Finalización del Encuentro (Bandera Roja) ───────────────────────────────
 const finishMatch = () => {
   $q.dialog({
-    title: 'Finalizar Encuentro',
-    message: '¿Confirmas la finalización del partido? Una vez finalizado, los resultados impactarán la tabla general de posiciones.',
-    cancel: true,
-    persistent: true,
-    ok: { label: 'Sí, Finalizar', color: 'negative' },
+    title: 'Finalizar Encuentro (Bandera Roja)',
+    message: '¿Confirmas la finalización del partido? Una vez finalizado (Bandera Roja), el resultado será oficial e impactará la tabla general de posiciones.',
     cancel: { label: 'Cancelar', color: 'grey-5', flat: true },
+    ok: { label: '🏁 Sí, Finalizar Encuentro', color: 'negative' },
+    persistent: true,
   }).onOk(async () => {
     try {
       const goals = apiGoals()
@@ -695,7 +722,12 @@ const finishMatch = () => {
         status: 'FINISHED',
         goals,
       })
-      $q.notify({ type: 'positive', message: 'Partido finalizado con éxito.' })
+      await store.fetchStandings()
+      $q.notify({
+        type: 'positive',
+        message: 'Partido finalizado con éxito 🔴 🏁.',
+        icon: 'flag',
+      })
     } catch (error) {
       $q.notify({ type: 'negative', message: getApiErrorMessage(error) })
     }
@@ -740,9 +772,32 @@ const finishMatch = () => {
               <span class="matchday-tag">JORNADA {{ match.matchday }}</span>
               <span class="text-caption text-grey-4">{{ match.homeTeam?.stadium || match.homeTeam?.cancha || 'Cancha Local' }}</span>
             </div>
-            <q-badge :color="matchStatusColor(match.status)" class="q-px-sm q-py-xs text-weight-bolder">
-              {{ isLive ? '🔴 EN VIVO' : matchStatusLabel(match.status).toUpperCase() }}
-            </q-badge>
+
+            <!-- STATUS BADGE CON BANDERAS DEPORTIVAS -->
+            <div class="row items-center gap-xs">
+              <div v-if="isLive" class="match-flag-badge match-flag-badge--live">
+                <span class="live-dot-pulse"></span>
+                <span class="flag-symbol">🏁</span>
+                <span>EN VIVO</span>
+              </div>
+              <div v-else-if="isFinished" class="match-flag-badge match-flag-badge--finished">
+                <span class="flag-symbol">🏁</span>
+                <span>FINALIZADO</span>
+              </div>
+              <div v-else class="match-flag-badge match-flag-badge--scheduled" style= "display: inline-flex;
+    align-items: center;
+    background: rgba(59, 130, 246, 0.12);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: #60a5fa;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    padding: 4px 9px;
+    border-radius: var(--tb-radius-full)">
+                <q-icon name="schedule" size="14px" class="q-mr-xs" />
+                <span>PROGRAMADO</span>
+              </div>
+            </div>
           </div>
 
           <div class="match-banner-grid">
@@ -790,16 +845,50 @@ const finishMatch = () => {
             </div>
           </div>
 
-          <!-- BOTÓN FINALIZAR PARTIDO -->
-          <div v-if="!isFinished" class="row justify-end q-mt-md">
-            <q-btn
-              unelevated
-              color="negative"
-              outline
-              icon="flag"
-              label="Finalizar Partido"
-              @click="finishMatch"
-            />
+          <!-- CONTROLES DE PARTIDO CON BANDERAS DEPORTIVAS (INICIAR / FINALIZAR) -->
+          <div class="row items-center justify-between q-mt-lg q-pt-md match-action-controls-bar">
+            <!-- INDICADOR VISUAL / EXPLICATIVO DE BANDERAS -->
+            <div class="row items-center gap-sm">
+              <div v-if="isLive" class="sports-flag-indicator sports-flag-indicator--live">
+                <span class="sports-flag-icon">🏁</span>
+                <span class="text-caption text-weight-bold text-positive">Encuentro EN VIVO</span>
+              </div>
+              <div v-else-if="isFinished" class="sports-flag-indicator sports-flag-indicator--finished">
+                <span class="sports-flag-icon">🏁</span>
+                <span class="text-caption text-weight-bold text-negative">Encuentro FINALIZADO</span>
+              </div>
+              <div v-else class="sports-flag-indicator sports-flag-indicator--scheduled">
+                <q-icon name="flag" color="grey-5" size="18px" />
+                <span class="text-caption text-grey-4">En espera para inicio oficial</span>
+              </div>
+            </div>
+
+            <!-- BOTONES DE ACCIÓN: INICIAR (BANDERA VERDE) / FINALIZAR (BANDERA ROJA) -->
+            <div class="row items-center gap-sm">
+              <!-- BOTÓN INICIAR PARTIDO (BANDERA VERDE) -->
+              <q-btn
+                v-if="match.status === 'SCHEDULED'"
+                unelevated
+                class="flag-btn flag-btn--start"
+                icon="flag"
+                label="Iniciar Partido (EN VIVO)"
+                @click="startMatch"
+              >
+                <q-tooltip>Poner el partido EN VIVO con Bandera Verde</q-tooltip>
+              </q-btn>
+
+              <!-- BOTÓN FINALIZAR PARTIDO (BANDERA ROJA) -->
+              <q-btn
+                v-if="!isFinished"
+                unelevated
+                class="flag-btn flag-btn--finish"
+                icon="flag"
+                label="Finalizar Partido"
+                @click="finishMatch"
+              >
+                <q-tooltip>Dar por concluido el encuentro con Bandera Roja</q-tooltip>
+              </q-btn>
+            </div>
           </div>
         </q-card-section>
       </q-card>
@@ -1339,6 +1428,10 @@ const finishMatch = () => {
 </template>
 
 <style scoped>
+.row.items-center.gap-sm {
+  display: flex;
+  gap: 10px;
+}
 .match-detail-page {
   animation: fadeIn 0.3s ease;
 }
@@ -1353,6 +1446,93 @@ const finishMatch = () => {
   border: 1px solid var(--tb-border) !important;
   border-radius: var(--tb-radius-lg) !important;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Sports Flags Indicators & Badges */
+.match-flag-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.match-flag-badge--live {
+  background: rgba(16, 185, 129, 0.18);
+  border: 1px solid rgba(16, 185, 129, 0.5);
+  color: #10b981;
+}
+
+.match-flag-badge--finished {
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  color: #ef4444;
+}
+
+.match-flag-badge--scheduled {
+  background: rgba(100, 116, 139, 0.18);
+  border: 1px solid rgba(100, 116, 139, 0.4);
+  color: #94a3b8;
+}
+
+.match-action-controls-bar {
+  border-top: 1px solid var(--tb-border);
+}
+
+.sports-flag-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: var(--tb-radius-sm);
+  background: var(--tb-surface-raised);
+}
+
+.sports-flag-indicator--live {
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.sports-flag-indicator--finished {
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.sports-flag-indicator--scheduled {
+  border: 1px solid var(--tb-border);
+}
+
+.flag-btn {
+  font-weight: 800 !important;
+  font-size: 0.85rem !important;
+  border-radius: var(--tb-radius-md) !important;
+  padding: 8px 18px !important;
+  transition: all 0.2s ease !important;
+}
+
+.flag-btn--start {
+  background: rgba(16, 185, 129, 0.15) !important;
+  border: 1.5px solid #10b981 !important;
+  color: #22c55e !important;
+}
+
+.flag-btn--start:hover {
+  background: #10b981 !important;
+  color: #0b111e !important;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.6) !important;
+}
+
+.flag-btn--finish {
+  background: rgba(239, 68, 68, 0.15) !important;
+  border: 1.5px solid #ef4444 !important;
+  color: #ef4444 !important;
+}
+
+.flag-btn--finish:hover {
+  background: #ef4444 !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.6) !important;
 }
 
 .matchday-tag {

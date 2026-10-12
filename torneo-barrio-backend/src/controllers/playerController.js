@@ -1,9 +1,99 @@
 const Player = require('../models/Player');
 const Team = require('../models/Team');
+const Match = require('../models/Match');
+
+// Agregación dinámica de incidencias de partidos (goles, asistencias, tarjetas)
+const getPlayerStatsFromMatches = async () => {
+  try {
+    const matches = await Match.find().lean();
+    const statsById = new Map();
+    const statsByName = new Map();
+
+    const getRecord = (map, key) => {
+      if (!key) return null;
+      const strKey = String(key).trim().toLowerCase();
+      if (!map.has(strKey)) {
+        map.set(strKey, { goals: 0, assists: 0, yellowCards: 0, redCards: 0 });
+      }
+      return map.get(strKey);
+    };
+
+    for (const match of matches) {
+      const goalsList = Array.isArray(match.goals) ? match.goals : (Array.isArray(match.goles) ? match.goles : []);
+      for (const g of goalsList) {
+        const isAuto = Boolean(g.isOwnGoal || g.isAutogol || g.autogol);
+        if (!isAuto) {
+          const pId = g.player
+            ? (typeof g.player === 'object' ? (g.player._id || g.player.id) : g.player)
+            : (g.jugador || g.jugadorId || g.playerId);
+          const pName = g.scorer || g.goleador || g.player?.name || g.player?.nombre || '';
+
+          if (pId) {
+            const rec = getRecord(statsById, pId.toString());
+            if (rec) rec.goals += 1;
+          }
+          if (pName) {
+            const rec = getRecord(statsByName, pName);
+            if (rec) rec.goals += 1;
+          }
+        }
+
+        const aId = g.assistPlayer
+          ? (typeof g.assistPlayer === 'object' ? (g.assistPlayer._id || g.assistPlayer.id) : g.assistPlayer)
+          : (g.asistidor || g.asistente || g.assistPlayerId);
+        const aName = g.assist || g.asistencia || '';
+        if (aId) {
+          const rec = getRecord(statsById, aId.toString());
+          if (rec) rec.assists += 1;
+        }
+        if (aName) {
+          const rec = getRecord(statsByName, aName);
+          if (rec) rec.assists += 1;
+        }
+      }
+
+      const eventsList = Array.isArray(match.events) ? match.events : (Array.isArray(match.incidencias) ? match.incidencias : []);
+      for (const e of eventsList) {
+        const pId = e.player
+          ? (typeof e.player === 'object' ? (e.player._id || e.player.id) : e.player)
+          : (e.jugador || e.jugadorId || e.playerId);
+        const pName = e.playerName || e.nombre || e.scorer || '';
+        const normType = String(e.type || e.tipo || '').toUpperCase();
+
+        const targets = [];
+        if (pId) {
+          const r = getRecord(statsById, pId.toString());
+          if (r) targets.push(r);
+        }
+        if (pName) {
+          const r = getRecord(statsByName, pName);
+          if (r) targets.push(r);
+        }
+
+        for (const rec of targets) {
+          if (normType === 'YELLOW_CARD' || normType.includes('AMARILLA')) {
+            rec.yellowCards += 1;
+          } else if (normType === 'RED_CARD' || normType.includes('ROJA')) {
+            rec.redCards += 1;
+          } else if (normType === 'ASSIST' || normType.includes('ASIST')) {
+            rec.assists += 1;
+          } else if (normType === 'GOAL' || normType === 'GOL') {
+            rec.goals += 1;
+          }
+        }
+      }
+    }
+
+    return { statsById, statsByName };
+  } catch (err) {
+    console.error('Error calculando estadísticas dinámicas de partidos:', err);
+    return { statsById: new Map(), statsByName: new Map() };
+  }
+};
 
 // Función auxiliar para normalizar y estructurar la salida de un jugador
 // Garantiza compatibilidad absoluta con datos nativos de MongoDB Atlas (nombre, dorsal, posicion, equipo, condicion)
-const formatPlayer = (doc) => {
+const formatPlayer = (doc, statsAgg = null) => {
   if (!doc) return null;
   const p = typeof doc.toObject === 'function' ? doc.toObject() : doc;
 
@@ -44,11 +134,27 @@ const formatPlayer = (doc) => {
     };
   }
 
-  // Normalizar estadísticas individuales
-  const goals = Number(p.goals !== undefined && p.goals !== null ? p.goals : (p.goles !== undefined && p.goles !== null ? p.goles : 0));
-  const assists = Number(p.assists !== undefined && p.assists !== null ? p.assists : (p.asistencias !== undefined && p.asistencias !== null ? p.asistencias : 0));
-  const yellowCards = Number(p.yellowCards !== undefined && p.yellowCards !== null ? p.yellowCards : (p.tarjetasAmarillas !== undefined && p.tarjetasAmarillas !== null ? p.tarjetasAmarillas : 0));
-  const redCards = Number(p.redCards !== undefined && p.redCards !== null ? p.redCards : (p.tarjetasRojas !== undefined && p.tarjetasRojas !== null ? p.tarjetasRojas : 0));
+  // Estadísticas dinámicas acumuladas de partidos + manuales
+  const pId = (p._id || p.id || '').toString();
+  const pName = String(p.nombre || p.name || '').trim().toLowerCase();
+
+  const fromId = statsAgg?.statsById?.get(pId) || null;
+  const fromName = statsAgg?.statsByName?.get(pName) || null;
+
+  const matchGoals = Math.max(fromId?.goals || 0, fromName?.goals || 0);
+  const matchAssists = Math.max(fromId?.assists || 0, fromName?.assists || 0);
+  const matchYellow = Math.max(fromId?.yellowCards || 0, fromName?.yellowCards || 0);
+  const matchRed = Math.max(fromId?.redCards || 0, fromName?.redCards || 0);
+
+  const manualGoals = Number(p.goals !== undefined && p.goals !== null ? p.goals : (p.goles !== undefined && p.goles !== null ? p.goles : 0));
+  const manualAssists = Number(p.assists !== undefined && p.assists !== null ? p.assists : (p.asistencias !== undefined && p.asistencias !== null ? p.asistencias : 0));
+  const manualYellow = Number(p.yellowCards !== undefined && p.yellowCards !== null ? p.yellowCards : (p.tarjetasAmarillas !== undefined && p.tarjetasAmarillas !== null ? p.tarjetasAmarillas : 0));
+  const manualRed = Number(p.redCards !== undefined && p.redCards !== null ? p.redCards : (p.tarjetasRojas !== undefined && p.tarjetasRojas !== null ? p.tarjetasRojas : 0));
+
+  const goals = Math.max(manualGoals, matchGoals);
+  const assists = Math.max(manualAssists, matchAssists);
+  const yellowCards = Math.max(manualYellow, matchYellow);
+  const redCards = Math.max(manualRed, matchRed);
 
   return {
     ...p,
@@ -81,19 +187,22 @@ const getPlayers = async (req, res) => {
     const page  = req.query.page  ? Math.max(1, Number(req.query.page))  : null;
     const limit = req.query.limit ? Math.max(1, Number(req.query.limit)) : null;
 
-    const query = Player.find().populate('team', 'name shortName logoUrl');
+    const [statsAgg, total, players] = await Promise.all([
+      getPlayerStatsFromMatches(),
+      page && limit ? Player.countDocuments() : Promise.resolve(0),
+      page && limit
+        ? Player.find().populate('team', 'name shortName logoUrl').skip((page - 1) * limit).limit(limit)
+        : Player.find().populate('team', 'name shortName logoUrl')
+    ]);
 
     if (page && limit) {
-      const total = await Player.countDocuments();
-      const players = await query.skip((page - 1) * limit).limit(limit);
       return res.status(200).json({
-        data: players.map(formatPlayer),
+        data: players.map((p) => formatPlayer(p, statsAgg)),
         pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
       });
     }
 
-    const players = await query;
-    res.status(200).json(players.map(formatPlayer));
+    res.status(200).json(players.map((p) => formatPlayer(p, statsAgg)));
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener los jugadores', error: error.message });
   }
@@ -103,13 +212,16 @@ const getPlayers = async (req, res) => {
 // @route   GET /api/players/:id
 const getPlayerById = async (req, res) => {
   try {
-    const player = await Player.findById(req.params.id).populate('team', 'name shortName logoUrl');
+    const [player, statsAgg] = await Promise.all([
+      Player.findById(req.params.id).populate('team', 'name shortName logoUrl'),
+      getPlayerStatsFromMatches()
+    ]);
 
     if (!player) {
       return res.status(404).json({ message: 'Jugador no encontrado' });
     }
 
-    res.status(200).json(formatPlayer(player));
+    res.status(200).json(formatPlayer(player, statsAgg));
   } catch (error) {
     res.status(400).json({ message: 'ID de jugador no válido', error: error.message });
   }

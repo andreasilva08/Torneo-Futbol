@@ -410,92 +410,125 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- JORNADAS DISPUTADAS POR EQUIPO (REGLA 37) -->
-      <div class="rule37-container q-mb-xl">
-        <!-- ENCABEZADO DE SECCIÓN -->
-        <div class="rule37-header q-mb-lg">
-          <div class="rule37-icon-box">
-            <q-icon name="assignment_turned_in" size="22px" />
-          </div>
-          <div>
+      <!-- JORNADAS DISPUTADAS POR EQUIPO (REGLA 37) - Colapsable -->
+      <q-expansion-item
+        class="rule37-expansion q-mb-xl"
+        icon="assignment_turned_in"
+        default-opened
+        expand-separator
+      >
+        <template #header>
+          <q-item-section avatar>
+            <div class="rule37-icon-box">
+              <q-icon name="assignment_turned_in" size="22px" />
+            </div>
+          </q-item-section>
+          <q-item-section>
             <div class="rule37-title">JORNADAS DISPUTADAS POR EQUIPO</div>
             <div class="rule37-subtitle">
-              Cómputo en tiempo real derivado exclusivamente de partidos con estado FINALIZADO o EN VIVO.
+              Regla 37 · Cómputo en tiempo real derivado de partidos FINALIZADOS.
             </div>
-          </div>
-        </div>
+          </q-item-section>
+        </template>
 
         <!-- GRID DE TARJETAS DE EQUIPO -->
-        <div class="row q-col-gutter-md">
-          <div
-            v-for="item in teamMatchdays"
-            :key="item.team._id"
-            class="col-12 col-sm-6 col-md-4 col-xl-3"
-          >
-            <div class="rule37-team-card">
-              <!-- TOP: escudo + nombre + contador -->
-              <div class="rule37-card-top">
-                <div class="rule37-crest-ring">
-                  <ImagePreview
-                    :src="item.team.logoUrl"
-                    fallback="/images/default-team.svg"
-                    :alt="item.team.name"
-                    width="38px"
-                    height="38px"
-                  />
+        <div class="q-pa-none q-pt-md">
+          <div class="row q-col-gutter-md">
+            <div
+              v-for="item in teamMatchdays"
+              :key="item.team._id"
+              class="col-12 col-sm-6 col-md-4 col-xl-3"
+            >
+              <div class="rule37-team-card">
+                <!-- TOP: escudo + nombre + contador -->
+                <div class="rule37-card-top">
+                  <div class="rule37-crest-ring">
+                    <ImagePreview
+                      :src="item.team.logoUrl"
+                      fallback="/images/default-team.svg"
+                      :alt="item.team.name"
+                      width="38px"
+                      height="38px"
+                    />
+                  </div>
+                  <div class="rule37-team-info">
+                    <div class="rule37-team-name">{{ item.team.name }}</div>
+                  </div>
+                  <div class="rule37-count-block">
+                    <span class="rule37-count-value">{{ item.matchdays.length }}</span>
+                    <span class="rule37-count-total">/ 38</span>
+                  </div>
                 </div>
-                <div class="rule37-team-info">
-                  <div class="rule37-team-name">{{ item.team.name }}</div>
+                <!-- PIE: chips de jornadas jugadas -->
+                <div class="rule37-card-footer">
+                  <span v-if="!item.matchdays.length" class="rule37-footer-text rule37-footer-text--empty">
+                    Sin jornadas jugadas aún
+                  </span>
+                  <div v-else>
+                    <div class="rule37-footer-label q-mb-xs">Jornadas disputadas:</div>
+                    <div class="row wrap" style="gap: 5px;">
+                      <span
+                        v-for="day in item.matchdays"
+                        :key="day"
+                        class="matchday-chip-tag"
+                      style="
+                      background-color: rgb(21, 34, 50); 
+                      border: 1px solid rgb(51, 78, 109); 
+                      border-radius: 4px; 
+                      color: rgb(56, 189, 248); 
+                      padding-left: 4px; 
+                      padding-right: 4px; 
+                      letter-spacing: .5px;
+                      font-weight: bolder;"
+                      >J{{ day }}</span>
+                    </div>
+                  </div>
                 </div>
-                <div class="rule37-count-block">
-                  <span class="rule37-count-value">{{ item.matchdays.length }}</span>
-                  <span class="rule37-count-total">/ 38</span>
-                </div>
-              </div>
-              <!-- PIE: descripción -->
-              <div class="rule37-card-footer">
-                <span v-if="!item.matchdays.length" class="rule37-footer-text">
-                  Sin jornadas jugadas aún
-                </span>
-                <span v-else class="rule37-footer-text">
-                  {{ item.matchdays.length }} partido{{ item.matchdays.length > 1 ? 's' : '' }} jugado{{ item.matchdays.length > 1 ? 's' : '' }}
-                </span>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </q-expansion-item>
 
       <!-- GROUPED MATCHES PER JORNADA -->
       <div v-if="groupedMatches.length" class="matchday-groups-list">
-        <div
+        <q-expansion-item
           v-for="group in groupedMatches"
           :id="`matchday-${group.matchday}`"
           :key="group.matchday"
-          class="matchday-group-section q-mb-xl"
+          class="matchday-expansion-item q-mb-md"
+          :default-opened="group.isCurrent || groupedMatches.length <= 3"
+          expand-separator
         >
-          <!-- GROUP HEADER -->
-          <div class="matchday-group-header">
-            <div class="row items-center gap-sm">
-              <div class="matchday-header-badge">JORNADA {{ group.matchday }}</div>
-              <span class="matchday-matches-count">{{ group.matches.length }} partido{{ group.matches.length > 1 ? 's' : '' }}</span>
-            </div>
-            <q-badge v-if="group.isCurrent" color="primary" rounded class="text-weight-bold">
-              JORNADA ACTUAL
-            </q-badge>
-          </div>
+          <template #header>
+            <q-item-section>
+              <div class="row items-center gap-sm">
+                <div class="matchday-header-badge">JORNADA {{ group.matchday }}</div>
+                <span class="matchday-matches-count">{{ group.matches.length }} partido{{ group.matches.length > 1 ? 's' : '' }}</span>
+                <q-badge v-if="group.isCurrent" color="primary" rounded class="text-weight-bold q-ml-xs" style="font-size: .7rem; 
+          border-radius: 8px; 
+          padding: 10px 10px; 
+          
+        ">
+                  JORNADA ACTUAL
+                </q-badge>
+              </div>
+            </q-item-section>
+          </template>
 
           <!-- MATCHES GRID -->
-          <div class="row q-col-gutter-lg">
-            <div
-              v-for="match in group.matches"
-              :key="match._id"
-              class="col-12 col-md-6 col-xl-4"
-            >
-              <MatchSummaryCard :match="match" />
+          <div class="q-pt-md q-pb-sm">
+            <div class="row q-col-gutter-lg">
+              <div
+                v-for="match in group.matches"
+                :key="match._id"
+                class="col-12 col-md-6 col-xl-4"
+              >
+                <MatchSummaryCard :match="match" />
+              </div>
             </div>
           </div>
-        </div>
+        </q-expansion-item>
       </div>
 
       <!-- EMPTY STATE -->
@@ -963,12 +996,48 @@ onMounted(async () => {
 .rule37-card-footer {
   border-top: 1px solid #2a374a;
   padding-top: 10px;
+  line-height: 1.5;
 }
 
 .rule37-footer-text {
   font-size: 0.78rem;
-  color: #64748b;
+  color: #94a3b8;
   font-weight: 500;
+  word-break: break-word;
+}
+
+.rule37-footer-text--empty {
+  color: #475569;
+  font-style: italic;
+}
+
+.rule37-footer-label {
+  font-weight: 700;
+  color: #10b981;
+  margin-right: 4px;
+}
+
+.rule37-footer-total {
+  font-weight: 700;
+  color: #10b981;
+  margin-left: 4px;
+}
+
+/* Expansion Item Regla 37 */
+.rule37-expansion {
+  background: transparent !important;
+  border: 1px solid var(--tb-border);
+  border-radius: var(--tb-radius-md);
+  overflow: hidden;
+}
+
+.rule37-expansion :deep(.q-expansion-item__container) {
+  background: var(--tb-surface);
+}
+
+.rule37-expansion :deep(.q-item) {
+  padding: 14px 20px;
+  min-height: 56px;
 }
 
 

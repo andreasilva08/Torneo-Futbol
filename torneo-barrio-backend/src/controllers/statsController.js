@@ -14,6 +14,101 @@ const getPlayerName = (player) => {
   return player.name || player.nombre || 'Jugador';
 };
 
+// Función auxiliar para calcular y ordenar la tabla de posiciones con criterios oficiales
+const calculateRankedTable = (teams, matchesList) => {
+  const standings = teams.map((team) => {
+    const name = getTeamName(team);
+    const shortName = team.shortName || team.siglas || name.slice(0, 3).toUpperCase();
+    const logoUrl = team.logoUrl || team.escudo_url || '';
+    const stadium = team.stadium || team.cancha || 'Cancha Local';
+    const neighborhood = team.neighborhood || team.barrio || '';
+
+    return {
+      _id: team._id,
+      name,
+      nombre: name,
+      shortName,
+      siglas: shortName,
+      logoUrl,
+      escudo_url: logoUrl,
+      stadium,
+      cancha: stadium,
+      neighborhood,
+      barrio: neighborhood,
+      played: 0,
+      wins: 0,
+      draws: 0,
+      losses: 0,
+      goalsFor: 0,
+      goalsAgainst: 0,
+      goalDifference: 0,
+      points: 0,
+    };
+  });
+
+  const standingsById = new Map(standings.map((team) => [team._id.toString(), team]));
+
+  matchesList.forEach((match) => {
+    const homeId = match.homeTeam ? match.homeTeam.toString() : null;
+    const awayId = match.awayTeam ? match.awayTeam.toString() : null;
+    const homeTeam = standingsById.get(homeId);
+    const awayTeam = standingsById.get(awayId);
+
+    if (!homeTeam || !awayTeam) {
+      return;
+    }
+
+    const homeGoals = Number(match.homeScore || 0);
+    const awayGoals = Number(match.awayScore || 0);
+
+    homeTeam.played += 1;
+    awayTeam.played += 1;
+    homeTeam.goalsFor += homeGoals;
+    awayTeam.goalsFor += awayGoals;
+    homeTeam.goalsAgainst += awayGoals;
+    awayTeam.goalsAgainst += homeGoals;
+
+    if (homeGoals > awayGoals) {
+      homeTeam.wins += 1;
+      homeTeam.points += 3;
+      awayTeam.losses += 1;
+    } else if (homeGoals < awayGoals) {
+      awayTeam.wins += 1;
+      awayTeam.points += 3;
+      homeTeam.losses += 1;
+    } else {
+      homeTeam.draws += 1;
+      awayTeam.draws += 1;
+      homeTeam.points += 1;
+      awayTeam.points += 1;
+    }
+  });
+
+  return standings
+    .map((team) => ({
+      ...team,
+      goalDifference: team.goalsFor - team.goalsAgainst,
+    }))
+    .sort((first, second) => {
+      if (second.points !== first.points) {
+        return second.points - first.points;
+      }
+      if (second.goalDifference !== first.goalDifference) {
+        return second.goalDifference - first.goalDifference;
+      }
+      if (second.goalsFor !== first.goalsFor) {
+        return second.goalsFor - first.goalsFor;
+      }
+      const firstName = String(first.name || '');
+      const secondName = String(second.name || '');
+      return firstName.localeCompare(secondName);
+    })
+    .map((team, index) => ({
+      position: index + 1,
+      ...team,
+    }));
+};
+
 // @desc    Obtener tabla general de posiciones
 // @route   GET /api/standings
 const getStandings = async (req, res) => {
@@ -21,97 +116,46 @@ const getStandings = async (req, res) => {
     const teams = await Team.find().lean();
     const matches = await Match.find({ status: 'FINISHED' }).lean();
 
-    const standings = teams.map((team) => {
-      const name = getTeamName(team);
-      const shortName = team.shortName || team.siglas || name.slice(0, 3).toUpperCase();
-      const logoUrl = team.logoUrl || team.escudo_url || '';
-      const stadium = team.stadium || team.cancha || 'Cancha Local';
-      const neighborhood = team.neighborhood || team.barrio || '';
+    const currentRanked = calculateRankedTable(teams, matches);
+
+    // Calcular movimiento respecto a la jornada anterior
+    const matchdaysWithMatches = matches
+      .map((m) => Number(m.matchday || 0))
+      .filter((md) => md > 0);
+    const maxMatchday = matchdaysWithMatches.length ? Math.max(...matchdaysWithMatches) : 0;
+
+    const previousPositionsMap = new Map();
+
+    if (maxMatchday > 1) {
+      const previousMatches = matches.filter((m) => Number(m.matchday || 0) < maxMatchday);
+      if (previousMatches.length > 0) {
+        const previousRanked = calculateRankedTable(teams, previousMatches);
+        previousRanked.forEach((t) => {
+          previousPositionsMap.set(t._id.toString(), t.position);
+        });
+      }
+    }
+
+    const rankedStandings = currentRanked.map((team) => {
+      const prevPos = previousPositionsMap.has(team._id.toString())
+        ? previousPositionsMap.get(team._id.toString())
+        : team.position;
+
+      const diff = prevPos - team.position;
+      let movement = 'SAME';
+      if (diff > 0) {
+        movement = 'UP';
+      } else if (diff < 0) {
+        movement = 'DOWN';
+      }
 
       return {
-        _id: team._id,
-        name,
-        nombre: name,
-        shortName,
-        siglas: shortName,
-        logoUrl,
-        escudo_url: logoUrl,
-        stadium,
-        cancha: stadium,
-        neighborhood,
-        barrio: neighborhood,
-        played: 0,
-        wins: 0,
-        draws: 0,
-        losses: 0,
-        goalsFor: 0,
-        goalsAgainst: 0,
-        goalDifference: 0,
-        points: 0,
+        ...team,
+        previousPosition: prevPos,
+        movement,
+        movementDiff: Math.abs(diff),
       };
     });
-
-    const standingsById = new Map(standings.map((team) => [team._id.toString(), team]));
-
-    matches.forEach((match) => {
-      const homeId = match.homeTeam ? match.homeTeam.toString() : null;
-      const awayId = match.awayTeam ? match.awayTeam.toString() : null;
-      const homeTeam = standingsById.get(homeId);
-      const awayTeam = standingsById.get(awayId);
-
-      if (!homeTeam || !awayTeam) {
-        return;
-      }
-
-      const homeGoals = Number(match.homeScore || 0);
-      const awayGoals = Number(match.awayScore || 0);
-
-      homeTeam.played += 1;
-      awayTeam.played += 1;
-      homeTeam.goalsFor += homeGoals;
-      awayTeam.goalsFor += awayGoals;
-      homeTeam.goalsAgainst += awayGoals;
-      awayTeam.goalsAgainst += homeGoals;
-
-      if (homeGoals > awayGoals) {
-        homeTeam.wins += 1;
-        homeTeam.points += 3;
-        awayTeam.losses += 1;
-      } else if (homeGoals < awayGoals) {
-        awayTeam.wins += 1;
-        awayTeam.points += 3;
-        homeTeam.losses += 1;
-      } else {
-        homeTeam.draws += 1;
-        awayTeam.draws += 1;
-        homeTeam.points += 1;
-        awayTeam.points += 1;
-      }
-    });
-
-    const rankedStandings = standings
-      .map((team) => ({
-        ...team,
-        goalDifference: team.goalsFor - team.goalsAgainst,
-      }))
-      .sort((first, second) => {
-        if (second.points !== first.points) {
-          return second.points - first.points;
-        }
-        if (second.goalDifference !== first.goalDifference) {
-          return second.goalDifference - first.goalDifference;
-        }
-        if (second.goalsFor !== first.goalsFor) {
-          return second.goalsFor - first.goalsFor;
-        }
-        const firstName = String(first.name || '');
-        const secondName = String(second.name || '');
-        return firstName.localeCompare(secondName);
-      })
-      .map((team, index) => ({
-        position: index + 1,
-        ...team,
-      }));
 
     res.status(200).json(rankedStandings);
   } catch (error) {

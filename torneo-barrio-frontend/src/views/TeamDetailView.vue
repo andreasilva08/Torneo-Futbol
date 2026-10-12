@@ -211,6 +211,12 @@ const getCondicionMeta = (val) => {
 </template>
 
 <style scoped>
+.q-mt-xs {
+  margin-top: 4px;
+  display: flex;
+  gap: 10px;
+}
+
 .team-detail-page {
   animation: fadeIn 0.3s ease;
 }

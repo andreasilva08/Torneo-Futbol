@@ -249,6 +249,48 @@ const getTeamId = (player) => {
   if (typeof rawTeam === 'object') return String(rawTeam._id || rawTeam.id || '')
   return String(rawTeam)
 }
+
+const getPlayerTeam = (player) => {
+  const raw = player.team || player.equipo || player.teamId
+  if (!raw) return null
+  if (typeof raw === 'object' && (raw._id || raw.id)) {
+    const rawId = String(raw._id || raw.id)
+    const found = store.teams.find((t) => String(t._id) === rawId)
+    return found || raw
+  }
+  const str = String(raw).trim()
+  const foundById = store.teams.find((t) => String(t._id) === str)
+  if (foundById) return foundById
+  const foundByName = store.teams.find((t) => (t.name || t.nombre || '').toLowerCase().trim() === str.toLowerCase())
+  return foundByName || null
+}
+
+const getPlayerTeamName = (player) => {
+  const team = getPlayerTeam(player)
+  if (team) return team.name || team.nombre || 'Equipo'
+  return player.equipo || (typeof player.team === 'string' ? player.team : 'Sin equipo')
+}
+
+const getPlayerTeamLogo = (player) => {
+  const team = getPlayerTeam(player)
+  if (team && (team.logoUrl || team.escudo_url)) {
+    return team.logoUrl || team.escudo_url
+  }
+  if (player.team && typeof player.team === 'object' && player.team.logoUrl) {
+    return player.team.logoUrl
+  }
+  return '/images/default-team.svg'
+}
+
+const goToPlayerTeam = (player) => {
+  const team = getPlayerTeam(player)
+  if (team?._id) {
+    router.push({ name: 'team-detail', params: { id: team._id } })
+  } else if (team?.id) {
+    router.push({ name: 'team-detail', params: { id: team.id } })
+  }
+}
+
 const filteredPlayers = computed(() => {
   const query = search.value.trim().toLowerCase()
 
@@ -452,10 +494,7 @@ watch(
 )
 
 onMounted(async () => {
-  await Promise.all([store.fetchTeams(), store.fetchPlayers()])
-
-  console.log('JUGADORES CARGADOS:', store.players)
-  console.log('EQUIPOS CARGADOS:', store.teams)
+  await Promise.all([store.fetchTeams(), store.fetchMatches(), store.fetchPlayers()])
 
   if (route.query.teamId && store.teams.some((team) => team._id === route.query.teamId)) {
     resetForm()
@@ -615,20 +654,31 @@ onMounted(async () => {
           </q-td>
         </template>
 
-        <!-- TEAM (CIRCULAR BADGE + NAME) -->
+        <!-- TEAM (CIRCULAR BADGE + NAME) - INTERACTIVO AL PLANTEL DEL EQUIPO -->
         <template #body-cell-team="props">
           <q-td :props="props">
-            <div class="team-badge-pill">
+            <div
+              class="team-badge-pill"
+              :class="{ 'team-badge-pill--interactive': Boolean(getPlayerTeam(props.row)) }"
+              @click="goToPlayerTeam(props.row)"
+              :title="getPlayerTeam(props.row) ? `Ver plantel oficial de ${getPlayerTeamName(props.row)}` : ''"
+            >
               <div class="sport-crest-container team-pill-crest">
                 <ImagePreview
-                  :src="props.row.team?.logoUrl"
+                  :src="getPlayerTeamLogo(props.row)"
                   fallback="/images/default-team.svg"
-                  :alt="props.row.team?.name || props.row.equipo || 'Equipo'"
+                  :alt="`Escudo de ${getPlayerTeamName(props.row)}`"
                   width="20px"
                   height="20px"
                 />
               </div>
-              <span class="team-pill-name">{{ props.row.team?.name || props.row.equipo || 'Sin equipo' }}</span>
+              <span class="team-pill-name">{{ getPlayerTeamName(props.row) }}</span>
+              <q-icon
+                v-if="getPlayerTeam(props.row)"
+                name="open_in_new"
+                size="12px"
+                class="q-ml-xs hover-icon"
+              />
             </div>
           </q-td>
         </template>
@@ -1027,18 +1077,51 @@ onMounted(async () => {
   border: 1px solid var(--tb-border);
   padding: 4px 12px 4px 6px;
   border-radius: 9999px;
+  transition: all 0.2s ease;
+}
+
+.team-badge-pill--interactive {
+  cursor: pointer;
+}
+
+.team-badge-pill--interactive:hover {
+  background: var(--tb-surface-hover);
+  border-color: var(--tb-primary);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+}
+
+.team-badge-pill--interactive:hover .team-pill-name {
+  color: var(--tb-primary);
+}
+
+.team-badge-pill--interactive:hover .team-pill-crest {
+  transform: scale(1.08);
+}
+
+.team-badge-pill .hover-icon {
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.team-badge-pill--interactive:hover .hover-icon {
+  opacity: 1;
+  color: var(--tb-primary);
+  transform: translate(2px, -2px);
 }
 
 .team-pill-crest {
   width: 26px;
   height: 26px;
   flex-shrink: 0;
+  transition: transform 0.2s ease;
 }
 
 .team-pill-name {
   font-size: 0.86rem;
   font-weight: 700;
   color: #ffffff;
+  transition: color 0.15s ease;
 }
 
 /* Condicion Dynamic Chip */
