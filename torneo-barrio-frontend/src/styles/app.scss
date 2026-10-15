@@ -13,8 +13,8 @@
   --tb-border-subtle: rgba(255, 255, 255, 0.08);
   --tb-border-accent: rgba(16, 185, 129, 0.4);
 
-  --tb-text: #f8fafc;
-  --tb-text-secondary: #cbd5e1;
+  --tb-text: #ffffff;
+  --tb-text-secondary: #94a3b8;
   --tb-muted: #94a3b8;
   --tb-muted-dark: #64748b;
 
@@ -24,7 +24,7 @@
   --tb-accent: #eab308;
   --tb-danger: #ef4444;
   --tb-warning: #f59e0b;
-  --tb-success: #22c55e;
+  --tb-success: #10b981;
   --tb-info: #38bdf8;
 
   --tb-radius-sm: 6px;
@@ -70,6 +70,10 @@ img,
 .image-preview__image {
   object-fit: contain !important;
   box-sizing: border-box !important;
+}
+
+.q-avatar img {
+  padding: 4px !important;
 }
 
 /* Custom Sports Scrollbars */

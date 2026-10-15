@@ -20,7 +20,7 @@ const imageUrlRules = [
 const form = reactive({
   name: '',
   shortName: '',
-  stadium: 'Cancha Local',
+  stadium: '',
   coach: '',
   neighborhood: '',
   foundationYear: 2026,
@@ -84,7 +84,7 @@ const resetForm = () => {
   Object.assign(form, {
     name: '',
     shortName: '',
-    stadium: 'Cancha Local',
+    stadium: '',
     coach: '',
     neighborhood: '',
     foundationYear: 2026,
@@ -105,7 +105,7 @@ const openEditDialog = (team) => {
   Object.assign(form, {
     name: team.name,
     shortName: team.shortName || team.name?.substring(0, 4).toUpperCase(),
-    stadium: team.stadium || 'Cancha Local',
+    stadium: team.stadium || team.cancha || team.estadio || '',
     coach: team.coach || '',
     neighborhood: team.neighborhood || '',
     foundationYear: team.foundationYear || 2026,
@@ -458,168 +458,153 @@ onMounted(async () => {
         <!-- MODAL HEADER -->
         <q-card-section class="dialog-header-section">
           <div class="row items-center justify-between">
-            <div class="row items-center gap-sm">
-              <div class="header-logo-badge">
-                <q-icon name="shield" size="22px" />
-              </div>
+            <div class="row items-center no-wrap q-gutter-x-sm">
+              <q-icon name="shield" size="22px" color="primary" />
               <div class="text-h6 text-weight-bold">
-                {{ editingId ? 'EDITAR EQUIPO' : '🛡 AGREGAR EQUIPO' }}
+                {{ editingId ? 'EDITAR EQUIPO' : 'AGREGAR EQUIPO' }}
               </div>
             </div>
             <q-btn flat round dense icon="close" color="grey-5" @click="closeDialog" />
           </div>
         </q-card-section>
 
-        <!-- FORM BODY (2 COLUMNS) -->
-        <q-form @submit.prevent="saveTeam" class="q-pa-lg q-gutter-y-md">
+        <!-- FORM BODY -->
+        <q-form @submit.prevent="saveTeam" class="q-pa-lg q-gutter-y-lg">
           <!-- FILA 1: Nombre del equipo (ancho completo con ícono pelota) -->
-          <q-input
-            v-model="form.name"
-            label="Nombre del equipo *"
-            placeholder="Ej: Corral FC, Atlético San José..."
-            outlined
-            stack-label
-            required
-          >
-            <template #prepend>
-              <q-icon name="sports_soccer" />
-            </template>
-          </q-input>
+          <div class="team-field">
+            <label class="text-caption text-weight-bold text-grey-4 block q-mb-xs">Nombre del equipo *</label>
+            <q-input
+              v-model="form.name"
+              aria-label="Nombre del equipo"
+              placeholder="Ej: Corral FC, Atlético San José..."
+              outlined
+              dense
+              required
+            >
+              <template #prepend>
+                <q-icon name="sports_soccer" />
+              </template>
+            </q-input>
+          </div>
 
           <!-- FILA 2: DT | Barrio / Sector -->
-          <div class="row q-col-gutter-md">
+          <div class="row q-col-gutter-md q-col-gutter-y-lg">
             <div class="col-12 col-sm-6">
-              <q-input
-                v-model="form.coach"
-                label="Director Técnico (DT)"
-                placeholder="Ej: Carlos Mendoza"
-                outlined
-                stack-label
-              >
-                <template #prepend>
-                  <q-icon name="person" />
-                </template>
-              </q-input>
+              <div class="team-field">
+                <label class="text-caption text-weight-bold text-grey-4 block q-mb-xs">Director Técnico (DT)</label>
+                <q-input
+                  v-model="form.coach"
+                  aria-label="Director Técnico (DT)"
+                  placeholder="Ej: Carlos Mendoza"
+                  outlined
+                  dense
+                >
+                  <template #prepend>
+                    <q-icon name="person" />
+                  </template>
+                </q-input>
+              </div>
             </div>
             <div class="col-12 col-sm-6">
-              <q-input
-                v-model="form.neighborhood"
-                label="Barrio / Sector"
-                placeholder="Ej: Sector Norte"
-                outlined
-                stack-label
-              >
-                <template #prepend>
-                  <q-icon name="place" />
-                </template>
-              </q-input>
+              <div class="team-field">
+                <label class="text-caption text-weight-bold text-grey-4 block q-mb-xs">Barrio / Sector</label>
+                <q-input
+                  v-model="form.neighborhood"
+                  aria-label="Barrio / Sector"
+                  placeholder="Ej: Sector Norte"
+                  outlined
+                  dense
+                >
+                  <template #prepend>
+                    <q-icon name="place" />
+                  </template>
+                </q-input>
+              </div>
             </div>
+          </div>
+
+          <div class="team-field">
+            <label class="text-caption text-weight-bold text-grey-4 block q-mb-xs" for="team-home-stadium">Cancha local (opcional)</label>
+            <q-input
+              id="team-home-stadium"
+              v-model="form.stadium"
+              aria-label="Cancha local"
+              placeholder="Nombre de la sede del equipo"
+              outlined
+              dense
+            >
+              <template #prepend>
+                <q-icon name="stadium" />
+              </template>
+            </q-input>
           </div>
 
           <!-- FILA 3: Año Fundación | URL del Escudo -->
-          <div class="row q-col-gutter-md">
+          <div class="row q-col-gutter-md q-col-gutter-y-lg">
             <div class="col-12 col-sm-6">
-              <q-input
-                v-model.number="form.foundationYear"
-                type="number"
-                label="Año Fundación"
-                placeholder="2026"
-                outlined
-                stack-label
-              >
-                <template #prepend>
-                  <q-icon name="schedule" />
-                </template>
-              </q-input>
-            </div>
-            <div class="col-12 col-sm-6">
-              <q-input
-                v-model="form.logoUrl"
-                label="URL del Escudo (Opcional)"
-                placeholder="https://... (o dejar vacío)"
-                outlined
-                stack-label
-                clearable
-              >
-                <template #prepend>
-                  <q-icon name="image" />
-                </template>
-              </q-input>
-            </div>
-          </div>
-
-          <!-- FILA 4: Color Principal | Color Secundario -->
-          <div class="row q-col-gutter-md">
-            <div class="col-12 col-sm-6">
-              <div class="color-picker-box">
-                <span class="text-caption text-grey-4">Color Principal</span>
-                <div class="row items-center gap-sm q-mt-xs">
-                  <input
-                    type="color"
-                    v-model="form.primaryColor"
-                    class="native-color-input"
-                  />
-                  <q-input
-                    v-model="form.primaryColor"
-                    dense
-                    outlined
-                    class="col"
-                  />
-                </div>
+              <div class="team-field">
+                <label class="text-caption text-weight-bold text-grey-4 block q-mb-xs">Año Fundación</label>
+                <q-input
+                  v-model.number="form.foundationYear"
+                  aria-label="Año Fundación"
+                  type="number"
+                  placeholder="2026"
+                  outlined
+                  dense
+                >
+                  <template #prepend>
+                    <q-icon name="schedule" />
+                  </template>
+                </q-input>
               </div>
             </div>
             <div class="col-12 col-sm-6">
-              <div class="color-picker-box">
-                <span class="text-caption text-grey-4">Color Secundario</span>
-                <div class="row items-center gap-sm q-mt-xs">
-                  <input
-                    type="color"
-                    v-model="form.secondaryColor"
-                    class="native-color-input"
-                  />
-                  <q-input
-                    v-model="form.secondaryColor"
-                    dense
-                    outlined
-                    class="col"
-                  />
-                </div>
+              <div class="team-field">
+                <label class="text-caption text-weight-bold text-grey-4 block q-mb-xs">URL del Escudo (Opcional)</label>
+                <q-input
+                  v-model="form.logoUrl"
+                  aria-label="URL del Escudo (Opcional)"
+                  placeholder="https://... (o dejar vacío)"
+                  outlined
+                  dense
+                  clearable
+                >
+                  <template #prepend>
+                    <q-icon name="image" />
+                  </template>
+                </q-input>
               </div>
             </div>
           </div>
 
-          <!-- FILA 5: VISTA PREVIA DE ESCUDO -->
-          <div class="shield-preview-container q-my-sm text-center">
+          <!-- FILA 4: VISTA PREVIA DE ESCUDO -->
+          <div class="shield-preview-container q-my-lg text-center">
             <div class="text-caption text-grey-5 q-mb-sm text-uppercase text-weight-bold" style="letter-spacing: 0.08em;">
               VISTA PREVIA DE ESCUDO
             </div>
-            <div
-              class="sport-crest-container preview-shield-circle"
-              :style="{
-                borderColor: form.primaryColor || '#15803d',
-                boxShadow: `0 0 16px ${form.primaryColor}55`
-              }"
-            >
+            <div class="sport-crest-container preview-shield-circle">
               <ImagePreview
                 :src="form.logoUrl"
                 fallback="/images/default-team.svg"
                 :alt="form.name || 'Vista previa'"
-                width="74px"
-                height="74px"
+                width="68px"
+                height="68px"
               />
             </div>
           </div>
 
-          <!-- FILA 6: Reseña o Historia del Equipo -->
-          <q-input
-            v-model="form.description"
-            type="textarea"
-            rows="3"
-            label="Reseña o Historia del Equipo"
-            placeholder="Breve reseña del equipo, lema o historia en el barrio..."
-            outlined
-            stack-label
-          />
+          <!-- FILA 5: Reseña o Historia del Equipo -->
+          <div class="team-field">
+            <label class="text-caption text-weight-bold text-grey-4 block q-mb-xs">Reseña o Historia del Equipo</label>
+            <q-input
+              v-model="form.description"
+              aria-label="Reseña o Historia del Equipo"
+              type="textarea"
+              rows="3"
+              placeholder="Breve reseña del equipo, lema o historia en el barrio..."
+              outlined
+            />
+          </div>
 
           <!-- FOOTER: CANCELAR + REGISTRAR EQUIPO -->
           <div class="row justify-end q-gutter-sm q-pt-md">
@@ -640,6 +625,15 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.q-col-gutter-y-lg {
+  padding-top: 14px;
+}
+
+.text-caption {
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+}
+
 .teams-page {
   animation: fadeIn 0.3s ease;
 }
@@ -795,7 +789,7 @@ onMounted(async () => {
 
 /* Modal styling */
 .team-modal-card {
-  max-width: 680px;
+  max-width: 760px;
   width: 95vw;
   background: var(--tb-surface) !important;
   border: 1px solid var(--tb-border);
@@ -808,36 +802,16 @@ onMounted(async () => {
   padding: 18px 22px;
 }
 
-.color-picker-box {
-  background: var(--tb-surface-raised);
-  border: 1px solid var(--tb-border);
-  border-radius: var(--tb-radius-md);
-  padding: 8px 12px;
-}
-
-.native-color-input {
-  width: 42px;
-  height: 38px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  border-radius: 6px;
-}
-
 .shield-preview-container {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 12px;
-  background: var(--tb-surface-raised);
-  border: 1px solid var(--tb-border);
-  border-radius: var(--tb-radius-md);
 }
 
 .preview-shield-circle {
-  width: 86px;
-  height: 86px;
-  border-width: 3px;
+  width: 90px;
+  height: 90px;
+  border: 2px solid var(--tb-primary);
 }
 </style>

@@ -285,7 +285,38 @@ export const useTournamentStore = defineStore('tournament', {
       return data
     },
 
+    async generateFixture(payload = {}) {
+      const { data } = await api.post('/matches/generate-fixture', payload)
+      await this.fetchMatches()
+      return data
+    },
+
+    async updateMatch(matchId, payload) {
+      const previousMatch = this.matches.find((match) => match._id === matchId) || this.matchDetail
+      const previousStatus = normalizeMatchStatus(previousMatch?.status)
+      const { data } = await api.put(`/matches/${matchId}`, payload)
+      const updated = normalizeMatch(data)
+      this.matchDetail = updated
+      this.matches = this.matches.map((match) => (match._id === matchId ? { ...match, ...updated } : match))
+      if (previousStatus === 'FINISHED' || updated.status === 'FINISHED') {
+        await this.fetchStandings()
+      }
+      return updated
+    },
+
+    async deleteMatch(matchId) {
+      const deletedMatch = this.matches.find((match) => match._id === matchId) || this.matchDetail
+      await api.delete(`/matches/${matchId}`)
+      this.matches = this.matches.filter((match) => match._id !== matchId)
+      if (this.matchDetail?._id === matchId) this.matchDetail = null
+      if (normalizeMatchStatus(deletedMatch?.status) === 'FINISHED') {
+        await this.fetchStandings()
+      }
+    },
+
     async updateMatchResult(matchId, payload) {
+      const previousMatch = this.matches.find((match) => match._id === matchId) || this.matchDetail
+      const previousStatus = normalizeMatchStatus(previousMatch?.status)
       const { data } = await api.put(`/matches/${matchId}/result`, payload)
       const updated = normalizeMatch({
         ...data,
@@ -293,6 +324,9 @@ export const useTournamentStore = defineStore('tournament', {
       })
       this.matchDetail = updated
       this.matches = this.matches.map((match) => (match._id === matchId ? { ...match, ...updated } : match))
+      if (previousStatus === 'FINISHED' || updated.status === 'FINISHED') {
+        await this.fetchStandings()
+      }
       return updated
     },
 

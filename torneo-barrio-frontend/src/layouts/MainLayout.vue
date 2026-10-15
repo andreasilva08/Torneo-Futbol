@@ -73,7 +73,7 @@ const goTo = (path) => {
             <div class="header-title text-weight-bolder">
               TORNEO DE BARRIO
             </div>
-            <div class="header-subtitle text-caption">
+            <div class="header-subtitle text-caption" style="font-size: 14px;">
               LIGA LOCAL · TEMPORADA 2026
             </div>
           </div>
@@ -92,7 +92,7 @@ const goTo = (path) => {
             color="primary"
             outline
             class="text-weight-bold q-px-sm q-py-xs text-uppercase"
-            style="letter-spacing: 0.06em; font-size: 0.72rem; border-radius: 9999px;"
+            style="letter-spacing: 0.1em; font-size: 1rem; border-radius: 9999px; padding: 0.4rem 0.9rem; "
           >
             TEMPORADA REGULAR
           </q-badge>

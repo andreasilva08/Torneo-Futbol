@@ -53,8 +53,11 @@ body{
     }
 
 # Rutas de la API-Partidos
-Obtener partidos, con filtros opcionales: `?matchday=3`, `?status=FINISHED` (o `SCHEDULED` / `IN_PROGRESS`)
+Obtener partidos, con filtros opcionales: `?matchday=3`, `?status=FINISHED` (o `SCHEDULED` / `IN_PROGRESS` / `SUSPENDED` / `POSTPONED`)
 GET /api/matches 
+
+Generar automáticamente un fixture de ida y vuelta (estilo Premier League). La generación requiere que no existan partidos registrados. Todos los encuentros de una jornada comparten fecha; los partidos se distribuyen entre las 09:00 y las 18:00, con una cancha local por equipo. Las jornadas se separan por una semana. Opcionalmente acepta `startDate` (`YYYY-MM-DD`) y `timeZone` (zona IANA, por ejemplo `America/Bogota`) para respetar la fecha, zona horaria y horario de verano del navegador.
+POST /api/matches/generate-fixture
 
 Obtener un partido por su ID, con goles y jugadores detallados
 GET /api/matches/:id 
@@ -62,7 +65,7 @@ GET /api/matches/:id
 Programar un partido nuevo
 POST /api/matches 
 
-Editar datos generales del partido (Jornada, fecha y equipos)
+Editar datos generales del partido (Jornada, fecha, cancha, árbitro, estado y equipos). La fecha puede enviarse como `null` mientras esté por definir.
 PUT /api/matches/:id 
 
 Eliminar un partido
@@ -70,6 +73,11 @@ DELETE `/api/matches/:id`
 
 Actualizar marcador, estado y lista de goles (panel de admin)
 PUT `/api/matches/:id/result` 
+
+Actualizar incidencias del partido (tarjetas, sustituciones, lesiones y asistencias)
+PUT /api/matches/:id/events
+
+Los partidos finalizados cuentan para la tabla de posiciones. La tabla se calcula directamente a partir de los resultados actuales, así que corregir un marcador o cambiar el estado se refleja en la siguiente consulta de `/api/standings`.
 
 body{
     "homeScore": 1,

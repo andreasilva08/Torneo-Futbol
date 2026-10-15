@@ -45,6 +45,11 @@ const teamSchema = new mongoose.Schema(
       trim: true,
       default: 'Cancha Local',
     },
+    estadio: {
+      type: String,
+      trim: true,
+      default: 'Cancha Local',
+    },
     coach: {
       type: String,
       trim: true,

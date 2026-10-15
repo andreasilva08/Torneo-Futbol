@@ -32,6 +32,18 @@ const eventForm = reactive({
 
 const goalSaving = reactive({ value: false })
 const eventSaving = reactive({ value: false })
+const matchEditDialog = ref(false)
+const matchEditSaving = ref(false)
+const deletingMatch = ref(false)
+const showMatchdayHistory = ref(false)
+const matchEditForm = reactive({
+  matchday: 1,
+  matchDate: '',
+  matchTime: '',
+  stadium: '',
+  referee: '',
+  status: 'SCHEDULED',
+})
 
 // Modal de edición de eventos o goles
 const editDialog = ref(false)
@@ -54,7 +66,60 @@ const editForm = reactive({
 const match = computed(() => store.matchDetail)
 const isFinished = computed(() => normalizeMatchStatus(match.value?.status) === 'FINISHED')
 const isLive = computed(() => normalizeMatchStatus(match.value?.status) === 'IN_PROGRESS')
+const isSuspended = computed(() => ['SUSPENDED', 'POSTPONED'].includes(normalizeMatchStatus(match.value?.status)))
+const isPostponed = computed(() => normalizeMatchStatus(match.value?.status) === 'POSTPONED')
+const hasValidScheduleDate = computed(() => {
+  if (!match.value?.date) return false
+  const date = new Date(match.value.date)
+  return !Number.isNaN(date.getTime())
+})
+const hasUnfinishedPriorMatchday = computed(() => Boolean(match.value && store.matches.some((item) => (
+  Number(item.matchday) < Number(match.value.matchday) &&
+  normalizeMatchStatus(item.status) !== 'FINISHED'
+))))
+const canStartMatch = computed(() => hasValidScheduleDate.value && !hasUnfinishedPriorMatchday.value)
+const requiresRescheduledDate = computed(() => (
+  ['SUSPENDED', 'POSTPONED'].includes(normalizeMatchStatus(matchEditForm.status)) &&
+  normalizeMatchStatus(matchEditForm.status) !== normalizeMatchStatus(match.value?.status)
+))
 const participantTeams = computed(() => [match.value?.homeTeam, match.value?.awayTeam].filter(Boolean))
+const matchdayOptions = computed(() => {
+  const expectedRounds = store.teams.length > 1 ? 2 * (store.teams.length - 1) : 1
+  const existingMax = Math.max(0, ...store.matches.map((item) => Number(item.matchday) || 0))
+  return Array.from({ length: Math.max(expectedRounds, existingMax) }, (_, index) => index + 1)
+})
+const headToHeadMatches = computed(() => {
+  const homeId = getId(match.value?.homeTeam)
+  const awayId = getId(match.value?.awayTeam)
+  if (!homeId || !awayId) return []
+
+  return store.matches
+    .filter((item) => {
+      if (item._id === match.value?._id) return false
+      const itemHomeId = getId(item.homeTeam)
+      const itemAwayId = getId(item.awayTeam)
+      return (itemHomeId === homeId && itemAwayId === awayId) ||
+        (itemHomeId === awayId && itemAwayId === homeId)
+    })
+    .sort((first, second) => Number(first.matchday) - Number(second.matchday))
+})
+const playedHeadToHeadMatches = computed(() => headToHeadMatches.value
+  .filter((item) => normalizeMatchStatus(item.status) === 'FINISHED'))
+const upcomingHeadToHeadMatches = computed(() => headToHeadMatches.value
+  .filter((item) => normalizeMatchStatus(item.status) !== 'FINISHED'))
+const freeMatchdays = computed(() => {
+  const homeId = getId(match.value?.homeTeam)
+  const awayId = getId(match.value?.awayTeam)
+  const usedMatchdays = new Set(
+    store.matches
+      .filter((item) => item._id !== match.value?._id && (
+        [getId(item.homeTeam), getId(item.awayTeam)].includes(homeId) ||
+        [getId(item.homeTeam), getId(item.awayTeam)].includes(awayId)
+      ))
+      .map((item) => Number(item.matchday)),
+  )
+  return matchdayOptions.value.filter((matchday) => !usedMatchdays.has(matchday))
+})
 
 const teamOptions = computed(() => participantTeams.value.map((team) => ({
   label: team.name || team.nombre || store.teams.find((item) => item._id === getId(team))?.name || 'Equipo',
@@ -198,13 +263,33 @@ const playerInOptions = computed(() => store.players
   })
   .map((player) => ({ label: formatPlayerOption(player), value: getId(player) })))
 
-// Opciones dinámicas para el modal de edición
+// Mantiene disponibles los jugadores de la incidencia abierta aunque su estado actual haya cambiado.
+const editTeamForPlayer = computed(() => {
+  if (!editForm.isGoal || !editForm.isOwnGoal) return editForm.team
+  return getId(match.value?.homeTeam) === editForm.team
+    ? getId(match.value?.awayTeam)
+    : getId(match.value?.homeTeam)
+})
+
+const isSelectedEditPlayer = (player) => (
+  [editForm.player, editForm.assistPlayer, editForm.playerIn, editForm.playerOut].includes(getId(player))
+)
+
 const editPlayerOptions = computed(() => store.players
-  .filter((player) => isPlayerInTeam(player, editForm.team))
+  .filter((player) => (
+    (isPlayerInTeam(player, editTeamForPlayer.value) || isSelectedEditPlayer(player)) &&
+    (
+      ['TITULAR', 'SUPLENTE'].includes(String(player.status || player.condicion || 'TITULAR').toUpperCase()) ||
+      isSelectedEditPlayer(player)
+    )
+  ))
   .map((player) => ({ label: formatPlayerOption(player), value: getId(player) })))
 
 const editAssistOptions = computed(() => store.players
-  .filter((player) => isPlayerInTeam(player, editForm.team) && String(getId(player)) !== String(editForm.player))
+  .filter((player) => isPlayerInTeam(player, editForm.team) && (
+    ['TITULAR', 'SUPLENTE'].includes(String(player.status || player.condicion || 'TITULAR').toUpperCase()) ||
+    getId(player) === editForm.assistPlayer
+  ) && String(getId(player)) !== String(editForm.player))
   .map((player) => ({ label: formatPlayerOption(player), value: getId(player) })))
 
 const playerName = (value) => {
@@ -221,6 +306,17 @@ const teamName = (value) => {
   }
   const found = store.teams.find((team) => getId(team) === getId(value))
   return found?.name || found?.nombre || 'Equipo'
+}
+
+const teamStadium = (value) => {
+  const teamId = getId(value)
+  const team = (value && typeof value === 'object')
+    ? value
+    : store.teams.find((item) => getId(item) === teamId)
+  const venues = [team?.cancha, team?.estadio, team?.stadium]
+    .map((venue) => String(venue || '').trim())
+    .filter((venue) => venue && !['cancha local', 'cancha principal'].includes(venue.toLowerCase()))
+  return venues[0] || 'Cancha Local'
 }
 
 // ─── Cronología del Encuentro (Timeline) ──────────────────────────────────────
@@ -377,21 +473,178 @@ watch(() => eventForm.team, () => {
 })
 
 const apiGoals = () => (match.value?.goals || []).map((goal) => ({
+  _id: getId(goal._id) || undefined,
   player: getId(goal.player) || null,
   scorer: goal.scorer || '',
   team: getId(goal.team),
-  minute: Number(goal.minute) || 1,
+  minute: Number.isFinite(Number(goal.minute)) ? Number(goal.minute) : 1,
   isOwnGoal: Boolean(goal.isOwnGoal || goal.isAutogol),
   isAutogol: Boolean(goal.isOwnGoal || goal.isAutogol),
   ...(goal.assistPlayer ? { assistPlayer: getId(goal.assistPlayer) } : {}),
   ...(goal.assist ? { assist: goal.assist } : {}),
 }))
 
+const apiEvents = () => (match.value?.events || []).map((event) => ({
+  _id: getId(event._id) || undefined,
+  type: event.type,
+  player: getId(event.player) || null,
+  team: getId(event.team) || null,
+  minute: Number.isFinite(Number(event.minute)) ? Number(event.minute) : 1,
+  playerIn: getId(event.playerIn) || null,
+  playerOut: getId(event.playerOut) || null,
+  injuryTime: event.injuryTime || '',
+  description: event.description || '',
+}))
+
 const scoreFor = (teamId, goals) => goals.filter((goal) => String(goal.team) === String(teamId)).length
+const matchStatusOptions = [
+  { label: 'Programado', value: 'SCHEDULED' },
+  { label: 'En vivo', value: 'IN_PROGRESS' },
+  { label: 'Finalizado', value: 'FINISHED' },
+  { label: 'Suspendido', value: 'SUSPENDED' },
+  { label: 'Aplazado', value: 'POSTPONED' },
+]
+
+const getLocalDateInput = (value) => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const pad = (part) => String(part).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+const getLocalTimeInput = (value) => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const pad = (part) => String(part).padStart(2, '0')
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+const openMatchEditDialog = () => {
+  if (!match.value) return
+  if (isFinished.value) {
+    $q.notify({ type: 'warning', message: 'El partido finalizado no se puede editar.' })
+    return
+  }
+  Object.assign(matchEditForm, {
+    matchday: Number(match.value.matchday) || 1,
+    matchDate: getLocalDateInput(match.value.date),
+    matchTime: getLocalTimeInput(match.value.date),
+    stadium: match.value.stadium || teamStadium(match.value.homeTeam) || 'Cancha Local',
+    referee: match.value.referee || '',
+    status: normalizeMatchStatus(match.value.status) || 'SCHEDULED',
+  })
+  matchEditDialog.value = true
+}
+
+const saveMatchEdits = async () => {
+  if (!match.value) return
+  if (Boolean(matchEditForm.matchDate) !== Boolean(matchEditForm.matchTime)) {
+    $q.notify({ type: 'warning', message: 'Completa tanto la fecha como la hora, o deja ambos campos vacíos.' })
+    return
+  }
+  if (['SUSPENDED', 'POSTPONED'].includes(normalizeMatchStatus(matchEditForm.status)) ||
+      ['SUSPENDED', 'POSTPONED'].includes(normalizeMatchStatus(match.value.status))) {
+    if (!matchEditForm.matchDate || !matchEditForm.matchTime) {
+      $q.notify({
+        type: 'warning',
+        message: '⚠️ PARTIDO SUSPENDIDO: Este encuentro debe ser reagendado con una nueva fecha y hora para no afectar la continuidad del torneo.',
+      })
+      return
+    }
+    const proposedDate = new Date(`${matchEditForm.matchDate}T${matchEditForm.matchTime}:00`)
+    const originalDate = match.value.originalDate || match.value.date
+    if (originalDate && proposedDate < new Date(originalDate)) {
+      $q.notify({ type: 'warning', message: 'La nueva fecha no puede ser anterior a la fecha original del encuentro.' })
+      return
+    }
+  }
+  if (requiresRescheduledDate.value) {
+    const previousDate = getLocalDateInput(match.value.date)
+    const previousTime = getLocalTimeInput(match.value.date)
+    const dateChanged = matchEditForm.matchDate !== previousDate || matchEditForm.matchTime !== previousTime
+    if (!matchEditForm.matchDate || !matchEditForm.matchTime || !dateChanged) {
+      $q.notify({
+        type: 'warning',
+        message: '⚠️ PARTIDO SUSPENDIDO: Este encuentro debe ser reagendado con una nueva fecha y hora para no afectar la continuidad del torneo.',
+      })
+      return
+    }
+  }
+  if (normalizeMatchStatus(matchEditForm.status) === 'IN_PROGRESS' &&
+      (!matchEditForm.matchDate || !matchEditForm.matchTime)) {
+    $q.notify({ type: 'warning', message: 'No se puede iniciar un partido sin fecha y hora válidas.' })
+    return
+  }
+
+  matchEditSaving.value = true
+  try {
+    const matchDate = matchEditForm.matchDate
+      ? new Date(`${matchEditForm.matchDate}T${matchEditForm.matchTime}:00`)
+      : null
+    if (matchDate && Number.isNaN(matchDate.getTime())) {
+      throw new Error('La fecha y la hora ingresadas no son válidas.')
+    }
+
+    await store.updateMatch(match.value._id, {
+      matchday: Number(matchEditForm.matchday),
+      matchdayDate: matchEditForm.matchDate,
+      date: matchDate ? matchDate.toISOString() : null,
+      stadium: matchEditForm.stadium.trim(),
+      referee: matchEditForm.referee.trim(),
+      status: matchEditForm.status,
+    })
+    matchEditDialog.value = false
+    $q.notify({ type: 'positive', message: 'Datos generales y estado del partido actualizados.' })
+  } catch (error) {
+    $q.notify({ type: 'negative', message: getApiErrorMessage(error) })
+  } finally {
+    matchEditSaving.value = false
+  }
+}
+
+watch(() => matchEditForm.status, (status) => {
+  const normalizedStatus = normalizeMatchStatus(status)
+  if (!['SUSPENDED', 'POSTPONED'].includes(normalizedStatus) ||
+      normalizedStatus === normalizeMatchStatus(match.value?.status)) return
+
+  $q.dialog({
+    title: '⚠️ PARTIDO SUSPENDIDO',
+    message: '⚠️ PARTIDO SUSPENDIDO: Este encuentro debe ser reagendado con una nueva fecha y hora para no afectar la continuidad del torneo.',
+    ok: { label: 'Entendido', color: 'warning' },
+    persistent: true,
+  })
+})
+
+const confirmDeleteMatch = () => {
+  if (!match.value || deletingMatch.value) return
+  const matchId = match.value._id
+
+  $q.dialog({
+    title: 'Eliminar partido',
+    message: '¿Estás seguro de eliminar este partido? Esta acción no se puede deshacer.',
+    cancel: { label: 'Cancelar', flat: true, color: 'grey-5' },
+    ok: { label: 'Eliminar Partido', color: 'negative', icon: 'delete' },
+    persistent: true,
+  }).onOk(async () => {
+    deletingMatch.value = true
+    try {
+      await store.deleteMatch(matchId)
+      matchEditDialog.value = false
+      $q.notify({ type: 'positive', message: 'Partido eliminado correctamente.' })
+      await router.push('/partidos')
+    } catch (error) {
+      $q.notify({ type: 'negative', message: getApiErrorMessage(error) })
+    } finally {
+      deletingMatch.value = false
+    }
+  })
+}
 
 // ─── Registro de Goles ────────────────────────────────────────────────────────
 const registerGoal = async () => {
-  if (!match.value || isFinished.value) return
+  if (!match.value) return
 
   goalSaving.value = true
   try {
@@ -416,12 +669,7 @@ const registerGoal = async () => {
 
     // Si tiene asistencia y no es autogol, registramos la asistencia en los eventos
     if (goalForm.assistPlayer && !isOwnGoal) {
-      const existingEvents = (match.value.events || []).map((event) => ({
-        type: event.type,
-        player: getId(event.player),
-        team: getId(event.team),
-        minute: Number(event.minute),
-      }))
+      const existingEvents = apiEvents()
       const newEvent = {
         type: 'ASSIST',
         player: goalForm.assistPlayer,
@@ -434,7 +682,7 @@ const registerGoal = async () => {
     await store.updateMatchResult(match.value._id, {
       homeScore: scoreFor(homeTeamId, goals),
       awayScore: scoreFor(awayTeamId, goals),
-      status: 'IN_PROGRESS',
+      status: isFinished.value ? 'FINISHED' : isSuspended.value ? normalizeMatchStatus(match.value.status) : 'IN_PROGRESS',
       goals,
     })
 
@@ -454,20 +702,11 @@ const registerGoal = async () => {
 
 // ─── Registro de Incidencias / Eventos ─────────────────────────────────────────
 const registerEvent = async () => {
-  if (!match.value || isFinished.value) return
+  if (!match.value) return
 
   eventSaving.value = true
   try {
-    const existingEvents = (match.value.events || []).map((event) => ({
-      type: event.type,
-      player: getId(event.player) || null,
-      team: getId(event.team) || null,
-      minute: Number(event.minute) || 1,
-      playerIn: getId(event.playerIn) || null,
-      playerOut: getId(event.playerOut) || null,
-      injuryTime: event.injuryTime || '',
-      description: event.description || '',
-    }))
+    const existingEvents = apiEvents()
 
     const newEvent = {
       type: eventForm.type,
@@ -535,12 +774,12 @@ const registerEvent = async () => {
 
 // ─── Edición y Corrección de Eventos / Goles Erróneos ────────────────────────
 const openEditItem = (event) => {
-  if (isFinished.value) return
-
   Object.assign(editForm, {
     isGoal: event.isGoal,
     id: getId(event.rawItem?._id) || '',
-    index: event.sourceOrder,
+    index: event.isGoal
+      ? event.sourceOrder
+      : event.sourceOrder - (match.value?.goals?.length || 0),
     team: event.teamId || '',
     player: event.playerId || '',
     assistPlayer: getId(event.rawItem?.assistPlayer) || '',
@@ -564,19 +803,21 @@ const saveEditedItem = async () => {
     if (editForm.isGoal) {
       // Modificar gol
       const currentGoals = apiGoals()
-      const targetIndex = editForm.index >= 0 && editForm.index < currentGoals.length
-        ? editForm.index
-        : currentGoals.findIndex((g) => getId(g._id) === editForm.id)
+      let targetIndex = currentGoals.findIndex((goal) => goal._id && String(goal._id) === editForm.id)
+      if (targetIndex < 0 && editForm.index >= 0 && editForm.index < currentGoals.length) {
+        targetIndex = editForm.index
+      }
+      if (targetIndex < 0) throw new Error('No se encontró el gol que deseas corregir.')
 
-      if (targetIndex >= 0) {
-        currentGoals[targetIndex] = {
-          player: editForm.player || null,
-          team: editForm.team,
-          minute: Number(editForm.minute),
-          isOwnGoal: Boolean(editForm.isOwnGoal),
-          isAutogol: Boolean(editForm.isOwnGoal),
-          ...(editForm.assistPlayer && !editForm.isOwnGoal ? { assistPlayer: editForm.assistPlayer } : {}),
-        }
+      currentGoals[targetIndex] = {
+        ...currentGoals[targetIndex],
+        player: editForm.player || null,
+        team: editForm.team,
+        minute: Number(editForm.minute),
+        isOwnGoal: Boolean(editForm.isOwnGoal),
+        isAutogol: Boolean(editForm.isOwnGoal),
+        assistPlayer: editForm.assistPlayer && !editForm.isOwnGoal ? editForm.assistPlayer : null,
+        assist: '',
       }
 
       await store.updateMatchResult(match.value._id, {
@@ -588,30 +829,23 @@ const saveEditedItem = async () => {
       $q.notify({ type: 'positive', message: 'Gol modificado y marcador recalculado correctamente.' })
     } else {
       // Modificar evento disciplinario o sustitución
-      const currentEvents = (match.value.events || []).map((e) => ({
-        type: e.type,
-        player: getId(e.player) || null,
-        team: getId(e.team) || null,
-        minute: Number(e.minute) || 1,
-        playerIn: getId(e.playerIn) || null,
-        playerOut: getId(e.playerOut) || null,
-        injuryTime: e.injuryTime || '',
-      }))
+      const currentEvents = apiEvents()
 
-      const targetIndex = editForm.index >= 0 && editForm.index < currentEvents.length
-        ? editForm.index
-        : 0
+      let targetIndex = currentEvents.findIndex((event) => event._id && String(event._id) === editForm.id)
+      if (targetIndex < 0 && editForm.index >= 0 && editForm.index < currentEvents.length) {
+        targetIndex = editForm.index
+      }
+      if (targetIndex < 0) throw new Error('No se encontró la incidencia que deseas corregir.')
 
-      if (targetIndex >= 0 && targetIndex < currentEvents.length) {
-        currentEvents[targetIndex] = {
-          type: editForm.type,
-          player: editForm.player || editForm.playerOut || null,
-          team: editForm.team,
-          minute: Number(editForm.minute),
-          playerIn: editForm.playerIn || null,
-          playerOut: editForm.playerOut || null,
-          injuryTime: editForm.injuryTime || '',
-        }
+      currentEvents[targetIndex] = {
+        ...currentEvents[targetIndex],
+        type: editForm.type,
+        player: editForm.player || editForm.playerOut || null,
+        team: editForm.team,
+        minute: Number(editForm.minute),
+        playerIn: editForm.playerIn || null,
+        playerOut: editForm.playerOut || null,
+        injuryTime: editForm.injuryTime || '',
       }
 
       await store.updateMatchEvents(match.value._id, currentEvents)
@@ -628,8 +862,6 @@ const saveEditedItem = async () => {
 
 // ─── Eliminación de Evento o Gol Erróneo ──────────────────────────────────────
 const removeItem = (event) => {
-  if (isFinished.value) return
-
   $q.dialog({
     title: 'Confirmar corrección',
     message: `¿Deseas eliminar este registro (${event.label} de ${event.playerName} al minuto ${event.minute}')? Si es un gol, el marcador del encuentro se ajustará de inmediato.`,
@@ -655,16 +887,13 @@ const removeItem = (event) => {
         })
         $q.notify({ type: 'positive', message: 'Gol eliminado y marcador ajustado.' })
       } else {
-        const currentEvents = (match.value.events || []).map((e) => ({
-          type: e.type,
-          player: getId(e.player) || null,
-          team: getId(e.team) || null,
-          minute: Number(e.minute) || 1,
-          playerIn: getId(e.playerIn) || null,
-          playerOut: getId(e.playerOut) || null,
-          injuryTime: e.injuryTime || '',
-        }))
-        const eventIndex = event.sourceOrder - (match.value.goals || []).length
+        const currentEvents = apiEvents()
+        let eventIndex = currentEvents.findIndex(
+          (item) => item._id && String(item._id) === getId(event.rawItem?._id),
+        )
+        if (eventIndex < 0) {
+          eventIndex = event.sourceOrder - (match.value.goals || []).length
+        }
         if (eventIndex >= 0 && eventIndex < currentEvents.length) {
           currentEvents.splice(eventIndex, 1)
         }
@@ -679,11 +908,23 @@ const removeItem = (event) => {
 
 // ─── Inicio del Encuentro (Poner EN VIVO con Bandera Verde) ─────────────────
 const startMatch = () => {
+  if (!canStartMatch.value) {
+    $q.notify({
+      type: 'warning',
+      message: !hasValidScheduleDate.value
+        ? 'Asigna una fecha y hora válidas antes de iniciar el partido.'
+        : 'Completa primero los partidos pendientes de jornadas anteriores.',
+    })
+    return
+  }
+  const isResuming = isSuspended.value
   $q.dialog({
-    title: 'Iniciar Partido (Poner EN VIVO)',
-    message: '¿Confirmas el inicio del partido? El estado cambiará a EN VIVO (Bandera Verde) y se habilitará el registro de incidencias en tiempo real.',
+    title: isResuming ? 'Reanudar Partido (Poner EN VIVO)' : 'Iniciar Partido (Poner EN VIVO)',
+    message: isResuming
+      ? '¿Confirmas la reprogramación e inicio del partido? El estado cambiará a EN VIVO.'
+      : '¿Confirmas el inicio del partido? El estado cambiará a EN VIVO (Bandera Verde) y se habilitará el registro de incidencias en tiempo real.',
     cancel: { label: 'Cancelar', color: 'grey-5', flat: true },
-    ok: { label: '🏁 Iniciar Partido (EN VIVO)', color: 'positive' },
+    ok: { label: isResuming ? 'Reanudar Partido' : '🏁 Iniciar Partido (EN VIVO)', color: 'positive' },
     persistent: true,
   }).onOk(async () => {
     try {
@@ -696,7 +937,9 @@ const startMatch = () => {
       })
       $q.notify({
         type: 'positive',
-        message: '¡Partido iniciado! Encuentro oficialmente EN VIVO 🟢 🏁',
+        message: isResuming
+          ? 'Partido reanudado; encuentro oficialmente EN VIVO 🟢 🏁'
+          : '¡Partido iniciado! Encuentro oficialmente EN VIVO 🟢 🏁',
         icon: 'flag',
       })
     } catch (error) {
@@ -722,7 +965,6 @@ const finishMatch = () => {
         status: 'FINISHED',
         goals,
       })
-      await store.fetchStandings()
       $q.notify({
         type: 'positive',
         message: 'Partido finalizado con éxito 🔴 🏁.',
@@ -770,7 +1012,10 @@ const finishMatch = () => {
           <div class="row items-center justify-between q-mb-md">
             <div class="row items-center gap-sm">
               <span class="matchday-tag">JORNADA {{ match.matchday }}</span>
-              <span class="text-caption text-grey-4">{{ match.homeTeam?.stadium || match.homeTeam?.cancha || 'Cancha Local' }}</span>
+              <span class="text-caption text-grey-4">{{ match.stadium || teamStadium(match.homeTeam) || 'Cancha Local' }}</span>
+              <span v-if="match.referee" class="text-caption text-grey-5">
+                <q-icon name="sports" size="14px" class="q-mr-xs" />Árbitro: {{ match.referee }}
+              </span>
             </div>
 
             <!-- STATUS BADGE CON BANDERAS DEPORTIVAS -->
@@ -783,6 +1028,10 @@ const finishMatch = () => {
               <div v-else-if="isFinished" class="match-flag-badge match-flag-badge--finished">
                 <span class="flag-symbol">🏁</span>
                 <span>FINALIZADO</span>
+              </div>
+              <div v-else-if="isSuspended" class="match-flag-badge match-flag-badge--suspended">
+                <q-icon name="pause_circle" size="14px" class="q-mr-xs" />
+                <span>{{ isPostponed ? 'APLAZADO' : 'SUSPENDIDO' }}</span>
               </div>
               <div v-else class="match-flag-badge match-flag-badge--scheduled" style= "display: inline-flex;
     align-items: center;
@@ -818,7 +1067,7 @@ const finishMatch = () => {
 
             <!-- SCORE / VS -->
             <div class="banner-score text-center">
-              <div v-if="match.status === 'SCHEDULED'" class="banner-vs-label">VS</div>
+              <div v-if="match.status === 'SCHEDULED' || isSuspended" class="banner-vs-label">VS</div>
               <div v-else class="banner-digits">
                 <span>{{ match.homeScore ?? 0 }}</span>
                 <span class="banner-digits-dash">-</span>
@@ -859,7 +1108,9 @@ const finishMatch = () => {
               </div>
               <div v-else class="sports-flag-indicator sports-flag-indicator--scheduled">
                 <q-icon name="flag" color="grey-5" size="18px" />
-                <span class="text-caption text-grey-4">En espera para inicio oficial</span>
+                <span class="text-caption text-grey-4">
+                  {{ isSuspended ? 'Partido suspendido' : 'En espera para inicio oficial' }}
+                </span>
               </div>
             </div>
 
@@ -867,19 +1118,28 @@ const finishMatch = () => {
             <div class="row items-center gap-sm">
               <!-- BOTÓN INICIAR PARTIDO (BANDERA VERDE) -->
               <q-btn
-                v-if="match.status === 'SCHEDULED'"
+                v-if="match.status === 'SCHEDULED' || isSuspended"
                 unelevated
                 class="flag-btn flag-btn--start"
                 icon="flag"
-                label="Iniciar Partido (EN VIVO)"
+                :label="isSuspended ? 'Reanudar Partido (EN VIVO)' : 'Iniciar Partido (EN VIVO)'"
+                :disable="!canStartMatch"
                 @click="startMatch"
               >
-                <q-tooltip>Poner el partido EN VIVO con Bandera Verde</q-tooltip>
+                <q-tooltip>
+                  {{ !canStartMatch
+                    ? !hasValidScheduleDate
+                      ? 'Asigna fecha y hora válidas antes de iniciar'
+                      : 'Completa primero los partidos pendientes de jornadas anteriores'
+                    : isSuspended
+                      ? 'Reprogramar/iniciar el encuentro nuevamente'
+                      : 'Poner el partido EN VIVO con Bandera Verde' }}
+                </q-tooltip>
               </q-btn>
 
               <!-- BOTÓN FINALIZAR PARTIDO (BANDERA ROJA) -->
               <q-btn
-                v-if="!isFinished"
+                v-if="isLive"
                 unelevated
                 class="flag-btn flag-btn--finish"
                 icon="flag"
@@ -888,6 +1148,22 @@ const finishMatch = () => {
               >
                 <q-tooltip>Dar por concluido el encuentro con Bandera Roja</q-tooltip>
               </q-btn>
+              <q-btn
+                v-if="!isFinished"
+                unelevated
+                color="secondary"
+                icon="edit"
+                label="Editar Partido"
+                @click="openMatchEditDialog"
+              />
+              <q-btn
+                flat
+                color="negative"
+                icon="delete"
+                label="Eliminar Partido"
+                :loading="deletingMatch"
+                @click="confirmDeleteMatch"
+              />
             </div>
           </div>
         </q-card-section>
@@ -1126,8 +1402,8 @@ const finishMatch = () => {
               <q-icon name="history" color="primary" size="22px" />
               <div class="text-subtitle1 text-weight-bold text-white">Cronología del Encuentro</div>
             </div>
-            <div v-if="!isFinished" class="text-caption text-grey-4">
-              Puedes corregir o eliminar incidencias antes de finalizar el partido.
+            <div class="text-caption text-grey-4">
+              Los goles e incidencias quedan bloqueados al finalizar el encuentro.
             </div>
           </div>
 
@@ -1193,7 +1469,7 @@ const finishMatch = () => {
                     </template>
                   </div>
 
-                  <!-- ACCIONES EDITAR / ELIMINAR (SI NO FINALIZADO) -->
+                  <!-- ACCIONES PARA CORREGIR EL ACTA -->
                   <div v-if="!isFinished" class="row items-center q-ml-xs">
                     <q-btn flat round dense icon="edit" color="secondary" size="11px" @click="openEditItem(event)">
                       <q-tooltip>Editar suceso</q-tooltip>
@@ -1213,7 +1489,7 @@ const finishMatch = () => {
               <!-- RIGHT SIDE (AWAY TEAM) -->
               <div class="timeline-side timeline-side--right">
                 <div v-if="event.side === 'away'" class="timeline-event-card timeline-event-card--away">
-                  <!-- ACCIONES EDITAR / ELIMINAR (SI NO FINALIZADO) -->
+                  <!-- ACCIONES PARA CORREGIR EL ACTA -->
                   <div v-if="!isFinished" class="row items-center q-mr-xs">
                     <q-btn flat round dense icon="edit" color="secondary" size="11px" @click="openEditItem(event)">
                       <q-tooltip>Editar suceso</q-tooltip>
@@ -1292,6 +1568,241 @@ const finishMatch = () => {
           </div>
         </q-card-section>
       </q-card>
+
+      <q-dialog v-model="matchEditDialog" persistent>
+        <q-card style="max-width: 660px; width: 94vw;">
+          <q-card-section class="dialog-header-section">
+            <div class="row items-center justify-between">
+              <div class="row items-center gap-sm">
+                <q-icon name="edit" size="22px" color="primary" />
+                <div class="text-subtitle1 text-weight-bold">Editar Partido</div>
+              </div>
+              <q-btn flat round dense icon="close" color="grey-5" @click="matchEditDialog = false" />
+            </div>
+          </q-card-section>
+
+          <q-form @submit.prevent="saveMatchEdits" class="q-pa-lg q-gutter-y-md">
+            <div class="match-edit-teams">
+              <div class="match-edit-team">
+                <div class="sport-crest-container match-edit-team__crest">
+                  <ImagePreview
+                    :src="match.homeTeam?.logoUrl || match.homeTeam?.escudo_url"
+                    fallback="/images/default-team.svg"
+                    :alt="`Escudo de ${teamName(match.homeTeam)}`"
+                    width="42px"
+                    height="42px"
+                  />
+                </div>
+                <span>{{ teamName(match.homeTeam) }}</span>
+              </div>
+              <span class="match-edit-vs">VS</span>
+              <div class="match-edit-team">
+                <div class="sport-crest-container match-edit-team__crest">
+                  <ImagePreview
+                    :src="match.awayTeam?.logoUrl || match.awayTeam?.escudo_url"
+                    fallback="/images/default-team.svg"
+                    :alt="`Escudo de ${teamName(match.awayTeam)}`"
+                    width="42px"
+                    height="42px"
+                  />
+                </div>
+                <span>{{ teamName(match.awayTeam) }}</span>
+              </div>
+            </div>
+
+            <div class="row items-end q-col-gutter-md q-col-gutter-y-md">
+              <div class="col-12 col-sm-6">
+                <label class="text-caption text-weight-bold text-grey-4 block q-mb-xs" for="match-edit-matchday">Jornada</label>
+                <q-input
+                  id="match-edit-matchday"
+                  v-model.number="matchEditForm.matchday"
+                  aria-label="Jornada"
+                  type="number"
+                  min="1"
+                  outlined
+                  dense
+                  required
+                />
+              </div>
+              <div class="col-12 col-sm-6">
+                <q-btn
+                  flat
+                  dense
+                  no-caps
+                  color="primary"
+                  icon="analytics"
+                  label="Consultar Jornadas del Enfrentamiento"
+                  class="matchday-history-trigger"
+                >
+                  <q-menu v-model="showMatchdayHistory" anchor="bottom left" self="top left">
+                    <q-card class="matchday-history-menu">
+                      <q-card-section class="q-pb-sm">
+                        <div class="text-subtitle2 text-weight-bold">Historial del enfrentamiento</div>
+                        <div class="text-caption text-grey-5">
+                          {{ teamName(match.homeTeam) }} vs {{ teamName(match.awayTeam) }}
+                        </div>
+                      </q-card-section>
+                      <q-separator dark />
+                      <q-card-section class="q-pt-sm">
+                        <div class="row items-center q-gutter-xs q-mb-sm">
+                          <div class="text-caption text-weight-bold text-grey-4">Jornadas disputadas</div>
+                          <q-badge color="positive" rounded>{{ playedHeadToHeadMatches.length }}</q-badge>
+                        </div>
+                        <div v-if="playedHeadToHeadMatches.length" class="column q-gutter-y-xs">
+                          <q-btn
+                            v-for="previous in playedHeadToHeadMatches"
+                            :key="`played-${previous._id}`"
+                            flat
+                            dense
+                            no-caps
+                            align="left"
+                            class="matchday-history-item matchday-history-item--played"
+                          >
+                            J{{ previous.matchday }} · {{ teamName(previous.homeTeam) }} {{ previous.homeScore ?? 0 }}–{{ previous.awayScore ?? 0 }} {{ teamName(previous.awayTeam) }}
+                            <q-badge color="positive" class="q-ml-xs">Disputada</q-badge>
+                          </q-btn>
+                        </div>
+                        <div v-else class="text-caption text-grey-5">Aún no han disputado un encuentro.</div>
+
+                        <template v-if="upcomingHeadToHeadMatches.length">
+                          <div class="text-caption text-weight-bold text-grey-4 q-mt-md q-mb-xs">Otros cruces programados</div>
+                          <div class="column q-gutter-y-xs">
+                            <div
+                              v-for="upcoming in upcomingHeadToHeadMatches"
+                              :key="`upcoming-${upcoming._id}`"
+                              class="matchday-history-upcoming"
+                            >
+                              <span>J{{ upcoming.matchday }} · {{ formatMatchDate(upcoming.date) }}</span>
+                              <q-badge :color="matchStatusColor(upcoming.status)">{{ matchStatusLabel(upcoming.status) }}</q-badge>
+                            </div>
+                          </div>
+                        </template>
+
+                        <div class="row items-center q-gutter-xs q-mt-md q-mb-xs">
+                          <div class="text-caption text-weight-bold text-grey-4">Jornadas libres para ambos equipos</div>
+                          <q-badge color="primary" rounded>{{ freeMatchdays.length }}</q-badge>
+                        </div>
+                        <div v-if="freeMatchdays.length" class="row wrap q-gutter-xs">
+                          <q-chip
+                            v-for="day in freeMatchdays"
+                            :key="`free-${day}`"
+                            clickable
+                            color="primary"
+                            text-color="white"
+                            size="sm"
+                            @click="matchEditForm.matchday = day; showMatchdayHistory = false"
+                          >
+                            J{{ day }}
+                          </q-chip>
+                        </div>
+                        <div v-else class="text-caption text-grey-5">No hay jornadas libres.</div>
+                      </q-card-section>
+                    </q-card>
+                  </q-menu>
+                </q-btn>
+              </div>
+            </div>
+
+            <div class="row q-col-gutter-md q-col-gutter-y-md">
+              <div class="col-12 col-sm-6">
+                <label class="text-caption text-weight-bold text-grey-4 block q-mb-xs" for="match-edit-date">Fecha</label>
+                <q-input
+                  id="match-edit-date"
+                  v-model="matchEditForm.matchDate"
+                  aria-label="Fecha"
+                  type="date"
+                  outlined
+                  dense
+                />
+              </div>
+              <div class="col-12 col-sm-6">
+                <label class="text-caption text-weight-bold text-grey-4 block q-mb-xs" for="match-edit-time">Hora</label>
+                <q-input
+                  id="match-edit-time"
+                  v-model="matchEditForm.matchTime"
+                  aria-label="Hora"
+                  type="time"
+                  outlined
+                  dense
+                />
+              </div>
+            </div>
+
+            <div class="match-edit-field">
+              <label class="text-caption text-weight-bold text-grey-4 block q-mb-xs" for="match-edit-stadium">Cancha</label>
+              <q-input
+                id="match-edit-stadium"
+                v-model="matchEditForm.stadium"
+                aria-label="Cancha"
+                placeholder="Cancha del equipo local"
+                outlined
+                dense
+              />
+            </div>
+            <div class="match-edit-field">
+              <label class="text-caption text-weight-bold text-grey-4 block q-mb-xs" for="match-edit-referee">Árbitro</label>
+              <q-input
+                id="match-edit-referee"
+                v-model="matchEditForm.referee"
+                aria-label="Árbitro"
+                placeholder="Nombre del árbitro"
+                outlined
+                dense
+              />
+            </div>
+            <div class="match-edit-field">
+              <label class="text-caption text-weight-bold text-grey-4 block q-mb-xs" for="match-edit-status">Estado</label>
+              <q-select
+                id="match-edit-status"
+                v-model="matchEditForm.status"
+                :options="matchStatusOptions"
+                aria-label="Estado"
+                emit-value
+                map-options
+                outlined
+                dense
+                required
+              />
+            </div>
+            <q-banner
+              v-if="['SUSPENDED', 'POSTPONED'].includes(matchEditForm.status)"
+              rounded
+              class="match-reschedule-warning"
+            >
+              <template #avatar><q-icon name="warning" color="warning" /></template>
+              <div class="text-weight-bold">⚠️ PARTIDO SUSPENDIDO</div>
+              <div>Este encuentro debe ser reagendado con una nueva fecha y hora para no afectar la continuidad del torneo.</div>
+              <div v-if="requiresRescheduledDate" class="text-weight-bold q-mt-xs">
+                Selecciona una fecha y hora distintas a la programación anterior para guardar este estado.
+              </div>
+            </q-banner>
+
+            <div class="row items-center justify-between q-gutter-sm q-pt-sm">
+              <q-btn
+                flat
+                color="negative"
+                icon="delete"
+                label="Eliminar Partido"
+                :loading="deletingMatch"
+                :disable="matchEditSaving"
+                @click="confirmDeleteMatch"
+              />
+              <div class="row justify-end q-gutter-sm">
+                <q-btn flat label="Cancelar" color="grey-5" @click="matchEditDialog = false" />
+                <q-btn
+                  unelevated
+                  color="primary"
+                  icon="save"
+                  label="Guardar Cambios"
+                  type="submit"
+                  :loading="matchEditSaving"
+                  :disable="deletingMatch"
+                />
+              </div>
+            </div>
+          </q-form>
+        </q-card>
+      </q-dialog>
 
       <!-- MODAL DE EDICIÓN / CORRECCIÓN DE SUCESO -->
       <q-dialog v-model="editDialog" persistent>
@@ -1428,6 +1939,9 @@ const finishMatch = () => {
 </template>
 
 <style scoped>
+.text-caption {
+  font-size: .9rem;
+}
 .row.items-center.gap-sm {
   display: flex;
   gap: 10px;
@@ -1470,6 +1984,12 @@ const finishMatch = () => {
   background: rgba(239, 68, 68, 0.18);
   border: 1px solid rgba(239, 68, 68, 0.5);
   color: #ef4444;
+}
+
+.match-flag-badge--suspended {
+  background: rgba(245, 158, 11, 0.16);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  color: #fbbf24;
 }
 
 .match-flag-badge--scheduled {
@@ -1786,5 +2306,109 @@ const finishMatch = () => {
 .dialog-header-section {
   background: var(--tb-surface-raised);
   border-bottom: 1px solid var(--tb-border);
+}
+
+.match-edit-teams {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 14px;
+  border: 1px solid var(--tb-border);
+  border-radius: var(--tb-radius-md);
+  background: var(--tb-surface-raised);
+}
+
+.match-edit-team {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: #fff;
+  font-weight: 700;
+}
+
+.match-edit-team > span {
+  overflow-wrap: anywhere;
+}
+
+.match-edit-team__crest {
+  flex: 0 0 50px;
+  width: 50px;
+  height: 50px;
+  padding: 4px;
+}
+
+.match-edit-vs {
+  flex: 0 0 auto;
+  color: var(--tb-muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.match-edit-field {
+  margin-bottom: 4px;
+}
+
+.matchday-history-trigger {
+  min-height: 40px;
+  white-space: normal;
+}
+
+.matchday-history-menu {
+  width: min(420px, 90vw);
+  max-height: 65vh;
+  overflow: auto;
+  background: #161f30;
+  color: #fff;
+  border: 1px solid #2a374a;
+  border-radius: 12px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+}
+
+.matchday-history-item {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 8px 10px;
+  border: 1px solid #2a374a;
+  border-radius: 8px;
+  background: rgba(11, 17, 30, 0.55);
+}
+
+.matchday-history-item--played {
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.matchday-history-upcoming {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid #2a374a;
+  border-radius: 8px;
+  background: rgba(11, 17, 30, 0.55);
+  color: #cbd5e1;
+  font-size: 0.78rem;
+}
+
+.match-reschedule-warning {
+  border: 1px solid rgba(245, 158, 11, 0.55);
+  background: rgba(245, 158, 11, 0.12);
+  color: #f8fafc;
+}
+
+@media (max-width: 520px) {
+  .match-edit-teams {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .match-edit-team {
+    flex-direction: column;
+    text-align: center;
+    font-size: 0.8rem;
+  }
 }
 </style>

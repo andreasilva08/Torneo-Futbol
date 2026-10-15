@@ -22,6 +22,10 @@ const store = useTournamentStore()
 const $q = useQuasar()
 
 const startMatchCard = () => {
+  if (!canStartMatch.value) {
+    $q.notify({ type: 'warning', message: startMatchBlockReason.value })
+    return
+  }
   $q.dialog({
     title: 'Iniciar Partido (Poner EN VIVO)',
     message: `¿Deseas iniciar el encuentro entre ${props.match.homeTeam?.name || 'Local'} vs ${props.match.awayTeam?.name || 'Visitante'}? Pasará a EN VIVO con Bandera Verde.`,
@@ -38,8 +42,8 @@ const startMatchCard = () => {
         message: 'Partido iniciado: oficialmente EN VIVO 🟢 🏁',
         icon: 'flag',
       })
-    } catch {
-      $q.notify({ type: 'negative', message: 'No se pudo iniciar el partido.' })
+    } catch (error) {
+      $q.notify({ type: 'negative', message: error?.response?.data?.message || 'No se pudo iniciar el partido.' })
     }
   })
 }
@@ -56,7 +60,6 @@ const finishMatchCard = () => {
       await store.updateMatchResult(props.match._id, {
         status: 'FINISHED',
       })
-      await store.fetchStandings()
       $q.notify({
         type: 'positive',
         message: 'Partido finalizado (Bandera Roja) 🔴 🏁',
@@ -78,9 +81,35 @@ const getPlayerName = (player) => {
 const statusNormalized = computed(() => normalizeMatchStatus(props.match.status))
 const isLive = computed(() => statusNormalized.value === 'IN_PROGRESS')
 const isFinished = computed(() => statusNormalized.value === 'FINISHED')
+const isSuspended = computed(() => ['SUSPENDED', 'POSTPONED'].includes(statusNormalized.value))
+const isPostponed = computed(() => statusNormalized.value === 'POSTPONED')
 const isScheduled = computed(() => statusNormalized.value === 'SCHEDULED')
+const isNotStarted = computed(() => isScheduled.value || isSuspended.value)
+const hasValidDate = computed(() => Boolean(props.match.date && !Number.isNaN(new Date(props.match.date).getTime())))
+const hasUnfinishedPriorMatchday = computed(() => store.matches.some((item) => (
+  Number(item.matchday) < Number(props.match.matchday) &&
+  normalizeMatchStatus(item.status) !== 'FINISHED'
+)))
+const canStartMatch = computed(() => isScheduled.value && hasValidDate.value && !hasUnfinishedPriorMatchday.value)
+const startMatchBlockReason = computed(() => {
+  if (!hasValidDate.value) return 'Asigna una fecha y hora válidas antes de iniciar el partido.'
+  if (hasUnfinishedPriorMatchday.value) return 'Completa primero los partidos pendientes de jornadas anteriores.'
+  return ''
+})
+const homeStadium = computed(() => {
+  const venues = [
+    props.match.stadium,
+    props.match.homeTeam?.cancha,
+    props.match.homeTeam?.estadio,
+    props.match.homeTeam?.stadium,
+  ]
+    .map((venue) => String(venue || '').trim())
+    .filter((venue) => venue && !['cancha local', 'cancha principal'].includes(venue.toLowerCase()))
+  return venues[0] || 'Cancha Local'
+})
 
 const matchTimeFormatted = computed(() => {
+  if (!props.match.date) return ''
   const date = new Date(props.match.date)
   if (Number.isNaN(date.getTime())) return ''
   return new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit' }).format(date)
@@ -147,7 +176,7 @@ const matchGoals = computed(() => {
             </span>
             <div class="stadium-info row items-center no-wrap">
               <q-icon name="place" size="14px" class="q-mr-xs text-grey-5" />
-              <span class="stadium-name-text">{{ match.homeTeam?.stadium || 'Cancha Local' }}</span>
+              <span class="stadium-name-text">{{ homeStadium }}</span>
             </div>
           </div>
 
@@ -159,6 +188,10 @@ const matchGoals = computed(() => {
             </div>
             <div v-else-if="isFinished" class="status-finished-badge">
               <span>🏁 FINALIZADO</span>
+            </div>
+            <div v-else-if="isSuspended" class="status-suspended-badge">
+              <q-icon name="pause_circle" size="12px" class="q-mr-xs" />
+              <span>{{ isPostponed ? 'APLAZADO' : 'SUSPENDIDO' }}</span>
             </div>
             <div v-else class="status-scheduled-badge">
               <q-icon name="schedule" size="12px" class="q-mr-xs" />
@@ -189,7 +222,7 @@ const matchGoals = computed(() => {
 
           <!-- CENTER SCORE BOX -->
           <div class="match-center-score">
-            <div v-if="isScheduled" class="score-box-scheduled">
+            <div v-if="isNotStarted" class="score-box-scheduled">
               <div class="score-vs">VS</div>
               <div v-if="matchTimeFormatted" class="score-time">{{ matchTimeFormatted }}</div>
             </div>
@@ -268,7 +301,8 @@ const matchGoals = computed(() => {
             v-if="isScheduled"
             type="button"
             class="quick-flag-btn quick-flag-btn--start"
-            title="Iniciar partido (Bandera Verde)"
+            :title="canStartMatch ? 'Iniciar partido (Bandera Verde)' : startMatchBlockReason"
+            :disabled="!canStartMatch"
             @click.stop.prevent="startMatchCard"
           >
             <q-icon name="flag" size="14px" class="q-mr-xs" />
@@ -417,6 +451,19 @@ const matchGoals = computed(() => {
   border-radius: var(--tb-radius-full);
 }
 
+.status-suspended-badge {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(245, 158, 11, 0.16);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 4px 9px;
+  border-radius: var(--tb-radius-full);
+}
+
 .status-scheduled-badge {
   display: inline-flex;
   align-items: center;
@@ -445,6 +492,11 @@ const matchGoals = computed(() => {
 .quick-flag-btn--start {
   border: 1px solid rgba(16, 185, 129, 0.5);
   color: #22c55e;
+}
+
+.quick-flag-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .quick-flag-btn--start:hover {

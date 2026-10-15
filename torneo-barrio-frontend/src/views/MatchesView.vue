@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { useRouter } from 'vue-router'
 import ImagePreview from '@/components/ImagePreview.vue'
@@ -12,6 +12,7 @@ const $q = useQuasar()
 const router = useRouter()
 const dialog = ref(false)
 const saving = ref(false)
+const fixtureGenerating = ref(false)
 const searchQuery = ref('')
 const filterStatus = ref('ALL')
 const sortMode = ref('matchday')
@@ -21,7 +22,7 @@ const form = reactive({
   matchday: null,
   matchDate: '',
   matchTime: '16:00',
-  stadium: 'Cancha Principal',
+  stadium: 'Cancha Local',
   referee: '',
   homeTeam: '',
   awayTeam: '',
@@ -45,6 +46,18 @@ const getTeamLogo = (team) => {
   return found?.logoUrl || '/images/default-team.svg'
 }
 
+const getTeamStadium = (teamId) => {
+  const team = store.teams.find((item) => item._id === teamId)
+  const venues = [team?.cancha, team?.estadio, team?.stadium]
+    .map((venue) => String(venue || '').trim())
+    .filter((venue) => venue && !['cancha local', 'cancha principal'].includes(venue.toLowerCase()))
+  return venues[0] || 'Cancha Local'
+}
+
+watch(() => form.homeTeam, (teamId) => {
+  form.stadium = getTeamStadium(teamId)
+})
+
 const formatMatchdayLabel = (matchday) => `Jornada ${Number(matchday) || 1}`
 
 const getFinishedMatchdaysForTeam = (teamId) => {
@@ -59,13 +72,30 @@ const getFinishedMatchdaysForTeam = (teamId) => {
     .filter((value) => Number.isInteger(value) && value > 0)
 }
 
-const isMatchdayBlockedForTeam = (teamId, matchday) => {
-  if (!teamId || !matchday) return false
-  const finishedMatchdays = getFinishedMatchdaysForTeam(teamId)
-  return finishedMatchdays.includes(Number(matchday))
+const getOccupiedMatchdaysForTeam = (teamId) => {
+  if (!teamId) return []
+
+  return store.matches
+    .filter((match) => (
+      (typeof match.homeTeam === 'object' ? match.homeTeam?._id : match.homeTeam) === teamId ||
+      (typeof match.awayTeam === 'object' ? match.awayTeam?._id : match.awayTeam) === teamId
+    ))
+    .map((match) => Number(match.matchday || 0))
+    .filter((value) => Number.isInteger(value) && value > 0)
 }
 
-const matchdayComparison = computed(() => Array.from({ length: 38 }, (_, index) => {
+const isMatchdayBlockedForTeam = (teamId, matchday) => {
+  if (!teamId || !matchday) return false
+  return getOccupiedMatchdaysForTeam(teamId).includes(Number(matchday))
+}
+
+const totalFixtureRounds = computed(() => Math.max(
+  0,
+  store.teams.length > 1 ? 2 * (store.teams.length - 1) : 0,
+  ...store.matches.map((match) => Number(match.matchday) || 0),
+))
+
+const matchdayComparison = computed(() => Array.from({ length: Math.max(38, totalFixtureRounds.value) }, (_, index) => {
   const value = index + 1
   const homeDisputed = isMatchdayBlockedForTeam(form.homeTeam, value)
   const awayDisputed = isMatchdayBlockedForTeam(form.awayTeam, value)
@@ -84,13 +114,43 @@ const matchdayComparison = computed(() => Array.from({ length: 38 }, (_, index) 
 
 const availableMatchdays = computed(() => matchdayComparison.value.filter((day) => day.available).map((day) => day.value))
 
+const generateFixture = () => {
+  $q.dialog({
+    title: 'Generar fixture ida y vuelta',
+    message: `Se crearán los cruces de ${store.teams.length} equipos en jornadas, con localía invertida en la segunda vuelta. Todos los partidos de una jornada se jugarán el mismo día, en turnos distribuidos entre las 09:00 y las 18:00. Cada encuentro usará la cancha registrada del equipo local. Esta acción solo está disponible cuando aún no hay partidos registrados.`,
+    cancel: { label: 'Cancelar', flat: true, color: 'grey-5' },
+    ok: { label: 'Generar Fixture', color: 'primary' },
+    persistent: true,
+  }).onOk(async () => {
+    fixtureGenerating.value = true
+    try {
+      const tomorrow = new Date()
+      tomorrow.setDate(tomorrow.getDate() + 1)
+      const pad = (value) => String(value).padStart(2, '0')
+      const startDate = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`
+      const result = await store.generateFixture({
+        startDate,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      })
+      $q.notify({
+        type: 'positive',
+        message: `Fixture programado: ${result.matchesCreated} partidos en ${result.matchdays} jornadas, con dos turnos diarios.`,
+      })
+    } catch (error) {
+      $q.notify({ type: 'negative', message: getApiErrorMessage(error) })
+    } finally {
+      fixtureGenerating.value = false
+    }
+  })
+}
+
 const resetForm = () => {
   const today = new Date().toISOString().split('T')[0]
   Object.assign(form, {
     matchday: null,
     matchDate: today,
     matchTime: '16:00',
-    stadium: 'Cancha Principal',
+    stadium: 'Cancha Local',
     referee: '',
     homeTeam: '',
     awayTeam: '',
@@ -114,7 +174,7 @@ const scheduleMatch = async () => {
   }
 
   if (isMatchdayBlockedForTeam(form.homeTeam, form.matchday) || isMatchdayBlockedForTeam(form.awayTeam, form.matchday)) {
-    $q.notify({ type: 'warning', message: 'La jornada seleccionada ya fue disputada por uno de los equipos seleccionados.' })
+    $q.notify({ type: 'warning', message: 'Uno de los equipos ya tiene un partido registrado en la jornada seleccionada.' })
     return
   }
 
@@ -128,13 +188,19 @@ const scheduleMatch = async () => {
   try {
     const timeStr = form.matchTime || '16:00'
     const matchDateObj = new Date(`${form.matchDate}T${timeStr}:00`)
-    const finalDateIso = Number.isNaN(matchDateObj.getTime()) ? new Date().toISOString() : matchDateObj.toISOString()
+    if (Number.isNaN(matchDateObj.getTime())) {
+      $q.notify({ type: 'warning', message: 'La fecha y hora ingresadas no son válidas.' })
+      return
+    }
 
     const created = await store.createMatch({
       matchday: Number(form.matchday),
-      date: finalDateIso,
+      matchdayDate: form.matchDate,
+      date: matchDateObj.toISOString(),
       homeTeam: form.homeTeam,
       awayTeam: form.awayTeam,
+      stadium: form.stadium.trim(),
+      referee: form.referee.trim(),
     })
 
     dialog.value = false
@@ -165,15 +231,16 @@ const compareMatchesByMatchday = (first, second, descendingDate = false) => {
 
 const currentMatchday = computed(() => {
   const values = store.matches
+    .filter((match) => ['SCHEDULED', 'IN_PROGRESS'].includes(normalizeMatchStatus(match.status)))
     .map((match) => Number(match.matchday))
     .filter((value) => Number.isFinite(value) && value > 0)
 
-  return values.length ? Math.max(...values) : null
+  return values.length ? Math.min(...values) : null
 })
 
 const allMatchdayNumbers = computed(() => {
   const days = new Set()
-  for (let i = 1; i <= 38; i++) days.add(i)
+  for (let i = 1; i <= Math.max(38, totalFixtureRounds.value); i++) days.add(i)
   return Array.from(days)
 })
 
@@ -183,7 +250,9 @@ const filteredMatches = computed(() => {
   return [...store.matches].filter((match) => {
     const teamNames = `${getTeamName(match.homeTeam)} ${getTeamName(match.awayTeam)} ${formatMatchdayLabel(match.matchday)}`.toLowerCase()
     const matchesSearch = !query || teamNames.includes(query)
-    const matchesStatus = filterStatus.value === 'ALL' || normalizeMatchStatus(match.status) === filterStatus.value
+    const status = normalizeMatchStatus(match.status)
+    const matchesStatus = filterStatus.value === 'ALL' ||
+      (filterStatus.value === 'SUSPENDED' ? ['SUSPENDED', 'POSTPONED'].includes(status) : status === filterStatus.value)
     const matchesMatchday = !activeMatchdayFilter.value || Number(match.matchday) === activeMatchdayFilter.value
     return matchesSearch && matchesStatus && matchesMatchday
   })
@@ -277,14 +346,29 @@ onMounted(async () => {
         </div>
       </div>
 
-      <q-btn
-        unelevated
-        color="primary"
-        icon="add"
-        label="Programar Partido"
-        :disable="store.teams.length < 2"
-        @click="openDialog"
-      />
+      <div class="row items-center q-gutter-sm">
+        <q-btn
+          outline
+          color="primary"
+          icon="sync"
+          label="Generar Fixture Premier"
+          :loading="fixtureGenerating"
+          :disable="store.teams.length < 2 || store.matches.length > 0 || store.matchesLoading"
+          @click="generateFixture"
+        >
+          <q-tooltip v-if="store.matches.length">
+            El generador requiere una competición sin partidos registrados.
+          </q-tooltip>
+        </q-btn>
+        <q-btn
+          unelevated
+          color="primary"
+          icon="add"
+          label="Programar Partido"
+          :disable="store.teams.length < 2"
+          @click="openDialog"
+        />
+      </div>
     </div>
 
     <!-- ERROR & WARNING BANNERS -->
@@ -352,6 +436,14 @@ onMounted(async () => {
                 @click="filterStatus = 'FINISHED'"
               >
                 Finalizados
+              </button>
+              <button
+                type="button"
+                class="status-btn"
+                :class="{ 'status-btn--active': filterStatus === 'SUSPENDED' }"
+                @click="filterStatus = 'SUSPENDED'"
+              >
+                Suspendidos / Aplazados
               </button>
             </div>
           </div>
@@ -426,7 +518,7 @@ onMounted(async () => {
           <q-item-section>
             <div class="rule37-title">JORNADAS DISPUTADAS POR EQUIPO</div>
             <div class="rule37-subtitle">
-              Regla 37 · Cómputo en tiempo real derivado de partidos FINALIZADOS.
+               Cómputo en tiempo real derivado de partidos FINALIZADOS.
             </div>
           </q-item-section>
         </template>
@@ -456,7 +548,7 @@ onMounted(async () => {
                   </div>
                   <div class="rule37-count-block">
                     <span class="rule37-count-value">{{ item.matchdays.length }}</span>
-                    <span class="rule37-count-total">/ 38</span>
+                    <span class="rule37-count-total">/ {{ totalFixtureRounds }}</span>
                   </div>
                 </div>
                 <!-- PIE: chips de jornadas jugadas -->
@@ -593,7 +685,7 @@ onMounted(async () => {
               Historial y Disponibilidad de Jornadas
             </div>
             <div class="text-caption text-grey-5 q-mb-sm">
-              Comprueba qué jornadas ya han jugado ambos equipos para evitar duplicados.
+              Comprueba qué jornadas ya tienen partido registrado estos equipos para evitar duplicados.
             </div>
 
             <!-- COMPARISON TABLE SCROLL -->
@@ -720,7 +812,7 @@ onMounted(async () => {
               <q-input
                 v-model="form.stadium"
                 label="Cancha / Sede"
-                placeholder="Cancha Principal"
+                placeholder="Cancha local del equipo"
                 outlined
                 stack-label
               >

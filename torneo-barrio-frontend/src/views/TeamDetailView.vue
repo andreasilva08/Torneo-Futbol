@@ -53,7 +53,7 @@ const getCondicionMeta = (val) => {
 <template>
   <div class="team-detail-page">
     <!-- PAGE HEADER -->
-    <div class="sport-page-header">
+    <div class="sport-page-header q-mb-xl">
       <div class="sport-page-header__left">
         <q-btn flat round icon="arrow_back" color="grey-4" @click="router.back()" class="q-mr-xs" />
         <div class="sport-page-header__icon-box">
@@ -79,8 +79,8 @@ const getCondicionMeta = (val) => {
 
     <div v-else-if="team" class="q-gutter-y-lg">
       <!-- TEAM HERO BANNER -->
-      <q-card flat class="sports-team-hero">
-        <q-card-section class="row items-center q-col-gutter-lg q-pa-lg">
+      <q-card flat class="sports-team-hero q-pa-lg">
+        <q-card-section class="row items-center q-col-gutter-lg q-pa-none">
           <div class="col-12 col-sm-auto text-center">
             <div class="sport-crest-container team-hero-crest">
               <ImagePreview
@@ -101,7 +101,7 @@ const getCondicionMeta = (val) => {
                 <span class="text-grey-5">·</span>
                 <span class="text-grey-4">
                   <q-icon name="place" size="14px" class="q-mr-xs" />
-                  {{ team.stadium || 'Cancha Local' }}
+                  {{ team.stadium || team.cancha || team.estadio || 'Cancha Local' }}
                 </span>
                 <span class="text-grey-5">·</span>
                 <span class="text-primary text-weight-bold">{{ players.length }} Jugadores</span>
@@ -211,6 +211,9 @@ const getCondicionMeta = (val) => {
 </template>
 
 <style scoped>
+.sport-page-header__left {
+  margin-bottom: 16px;
+}
 .q-mt-xs {
   margin-top: 4px;
   display: flex;

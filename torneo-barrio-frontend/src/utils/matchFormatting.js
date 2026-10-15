@@ -7,6 +7,10 @@ export const getId = (value) => {
 }
 
 export const formatMatchDate = (value, options = {}) => {
+  if (!value) {
+    return 'Fecha por definir'
+  }
+
   const date = new Date(value)
 
   if (Number.isNaN(date.getTime())) {
@@ -26,12 +30,16 @@ export const matchStatusLabel = (status) => ({
   SCHEDULED: 'Programado',
   IN_PROGRESS: 'En curso',
   FINISHED: 'Finalizado',
+  SUSPENDED: 'Suspendido',
+  POSTPONED: 'Aplazado',
 }[normalizeMatchStatus(status)] || 'Estado desconocido')
 
 export const matchStatusColor = (status) => ({
   SCHEDULED: 'blue-grey',
   IN_PROGRESS: 'positive',
   FINISHED: 'dark',
+  SUSPENDED: 'warning',
+  POSTPONED: 'warning',
 }[normalizeMatchStatus(status)] || 'grey')
 
 export const eventTypeLabel = (type) => {

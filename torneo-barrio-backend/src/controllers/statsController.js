@@ -20,7 +20,9 @@ const calculateRankedTable = (teams, matchesList) => {
     const name = getTeamName(team);
     const shortName = team.shortName || team.siglas || name.slice(0, 3).toUpperCase();
     const logoUrl = team.logoUrl || team.escudo_url || '';
-    const stadium = team.stadium || team.cancha || 'Cancha Local';
+    const stadium = [team.cancha, team.estadio, team.stadium]
+      .map((venue) => String(venue || '').trim())
+      .find((venue) => venue && !['cancha local', 'cancha principal'].includes(venue.toLowerCase())) || 'Cancha Local';
     const neighborhood = team.neighborhood || team.barrio || '';
 
     return {
@@ -126,14 +128,12 @@ const getStandings = async (req, res) => {
 
     const previousPositionsMap = new Map();
 
-    if (maxMatchday > 1) {
+    if (maxMatchday > 0) {
       const previousMatches = matches.filter((m) => Number(m.matchday || 0) < maxMatchday);
-      if (previousMatches.length > 0) {
-        const previousRanked = calculateRankedTable(teams, previousMatches);
-        previousRanked.forEach((t) => {
-          previousPositionsMap.set(t._id.toString(), t.position);
-        });
-      }
+      const previousRanked = calculateRankedTable(teams, previousMatches);
+      previousRanked.forEach((t) => {
+        previousPositionsMap.set(t._id.toString(), t.position);
+      });
     }
 
     const rankedStandings = currentRanked.map((team) => {

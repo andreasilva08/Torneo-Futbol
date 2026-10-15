@@ -96,11 +96,29 @@ const matchSchema = new mongoose.Schema(
       type: Number,
       required: [true, 'La jornada es obligatoria'],
       min: [1, 'La jornada debe ser mayor a 0'],
-      max: [38, 'La jornada no puede superar la 38']
+    },
+    matchdayDate: {
+      type: String,
+      trim: true,
+      default: '',
     },
     date: {
       type: Date,
-      required: [true, 'La fecha del partido es obligatoria']
+      default: null,
+    },
+    originalDate: {
+      type: Date,
+      default: null,
+    },
+    stadium: {
+      type: String,
+      trim: true,
+      default: 'Cancha Local',
+    },
+    referee: {
+      type: String,
+      trim: true,
+      default: '',
     },
     homeTeam: {
       type: mongoose.Schema.Types.ObjectId,
@@ -125,7 +143,7 @@ const matchSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: {
-        values: ['SCHEDULED', 'IN_PROGRESS', 'FINISHED'],
+        values: ['SCHEDULED', 'IN_PROGRESS', 'FINISHED', 'SUSPENDED', 'POSTPONED'],
         message: '{VALUE} no es un estado válido'
       },
       default: 'SCHEDULED'

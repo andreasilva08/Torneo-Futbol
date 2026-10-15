@@ -1,6 +1,11 @@
 const Team = require('../models/Team');
 const Player = require('../models/Player');
 
+const GENERIC_VENUES = new Set(['cancha local', 'cancha principal']);
+const getTeamStadium = (team) => [team?.stadium, team?.cancha, team?.estadio]
+  .map((venue) => String(venue || '').trim())
+  .find((venue) => venue && !GENERIC_VENUES.has(venue.toLowerCase())) || 'Cancha Local';
+
 const isValidImageUrl = (value) => {
   if (!value || typeof value !== 'string') {
     return false;
@@ -61,8 +66,9 @@ const normalizeTeamPayload = (team, teamName = '', teamId = '') => {
     dt: team.dt || team.coach || '',
     neighborhood: team.neighborhood || team.barrio || '',
     barrio: team.barrio || team.neighborhood || '',
-    stadium: team.stadium || team.cancha || 'Cancha Local',
-    cancha: team.cancha || team.stadium || 'Cancha Local',
+    stadium: getTeamStadium(team),
+    cancha: getTeamStadium(team),
+    estadio: getTeamStadium(team),
     foundationYear: Number(team.foundationYear || team.fundacion || 2026),
     fundacion: Number(team.fundacion || team.foundationYear || 2026),
   };
@@ -107,6 +113,8 @@ const createTeam = async (req, res) => {
       logoUrl,
       escudo_url,
       stadium,
+      cancha,
+      estadio,
       coach,
       dt,
       neighborhood,
@@ -134,7 +142,9 @@ const createTeam = async (req, res) => {
       siglas: teamShortName,
       logoUrl: resolvedLogoUrl,
       escudo_url: resolvedLogoUrl,
-      stadium: stadium || 'Cancha Local',
+      stadium: getTeamStadium({ stadium, cancha, estadio }),
+      cancha: getTeamStadium({ stadium, cancha, estadio }),
+      estadio: getTeamStadium({ stadium, cancha, estadio }),
       coach: coach || dt || '',
       dt: dt || coach || '',
       neighborhood: neighborhood || barrio || '',
@@ -172,6 +182,14 @@ const updateTeam = async (req, res) => {
         logoUrl: req.body.logoUrl,
       }, existingTeam.name, existingTeam._id.toString()),
     };
+    if (req.body.stadium !== undefined || req.body.cancha !== undefined || req.body.estadio !== undefined) {
+      const venue = getTeamStadium({
+        stadium: req.body.stadium ?? req.body.cancha ?? req.body.estadio,
+      });
+      nextPayload.stadium = venue;
+      nextPayload.cancha = venue;
+      nextPayload.estadio = venue;
+    }
 
     const updatedTeam = await Team.findByIdAndUpdate(
       req.params.id,

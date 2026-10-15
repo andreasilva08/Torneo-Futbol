@@ -7,8 +7,11 @@ const {
     updateMatch,
     deleteMatch,
     updateMatchResult,
-    updateMatchEvents
+    updateMatchEvents,
+    generateFixture,
 } = require('../controllers/matchController');
+
+router.post('/generate-fixture', generateFixture);
 
 router.route('/')
 .get(getMatches)
