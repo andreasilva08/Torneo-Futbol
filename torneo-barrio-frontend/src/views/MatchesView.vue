@@ -555,11 +555,11 @@ onMounted(async () => {
                 <div class="rule37-card-top">
                   <div class="rule37-crest-ring">
                     <ImagePreview
-                      :src="item.team.logoUrl || item.team.escudo_url"
+                      :src="item.team.logoUrl || item.team.escudo_url || item.team.logo || getDefaultTeamLogo(item.team)"
                       :fallback="getDefaultTeamLogo(item.team)"
                       :alt="item.team.name"
-                      width="38px"
-                      height="38px"
+                      width="44px"
+                      height="44px"
                     />
                   </div>
                   <div class="rule37-team-info">
@@ -1057,7 +1057,7 @@ onMounted(async () => {
   border-radius: 50%;
   border: 2px solid #10b981;
   box-shadow: 0 0 14px rgba(16, 185, 129, 0.3);
-  background: #0b111e;
+  background: transparent;
   overflow: hidden;
   padding: 4px;
   box-sizing: border-box;
@@ -1067,6 +1067,7 @@ onMounted(async () => {
   width: 100% !important;
   height: 100% !important;
   object-fit: contain !important;
+  background: transparent !important;
 }
 
 .rule37-team-info {

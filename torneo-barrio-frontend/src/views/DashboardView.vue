@@ -495,7 +495,7 @@ onUnmounted(() => {
 }
 
 .section-heading {
-  font-size: 0.875rem;
+  font-size: 1.1rem;
   font-weight: 900;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -797,26 +797,26 @@ onUnmounted(() => {
 }
 
 .activity-player {
-  font-size: 0.86rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: #ffffff;
 }
 
 .activity-type-label {
-  font-size: 0.72rem;
+  font-size: 1rem;
   font-weight: 700;
   color: var(--tb-primary);
   text-transform: uppercase;
 }
 
 .activity-minute {
-  font-size: 0.7rem;
+  font-size: 1rem;
   font-weight: 600;
   color: var(--tb-muted);
 }
 
 .activity-sub {
-  font-size: 0.74rem;
+  font-size: 1rem;
   color: var(--tb-muted);
   margin-top: 2px;
 }

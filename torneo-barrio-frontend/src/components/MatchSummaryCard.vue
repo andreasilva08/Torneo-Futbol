@@ -207,7 +207,7 @@ const matchGoals = computed(() => {
           <div class="match-team match-team--home">
             <div class="sport-crest-container match-team__crest-box">
               <ImagePreview
-                :src="match.homeTeam?.logoUrl || match.homeTeam?.escudo_url"
+                :src="match.homeTeam?.logoUrl || match.homeTeam?.escudo_url || match.homeTeam?.logo || getDefaultTeamLogo(match.homeTeam)"
                 :fallback="getDefaultTeamLogo(match.homeTeam)"
                 :alt="`Escudo de ${match.homeTeam?.name || 'Local'}`"
                 width="48px"
@@ -242,7 +242,7 @@ const matchGoals = computed(() => {
           <div class="match-team match-team--away">
             <div class="sport-crest-container match-team__crest-box">
               <ImagePreview
-                :src="match.awayTeam?.logoUrl || match.awayTeam?.escudo_url"
+                :src="match.awayTeam?.logoUrl || match.awayTeam?.escudo_url || match.awayTeam?.logo || getDefaultTeamLogo(match.awayTeam)"
                 :fallback="getDefaultTeamLogo(match.awayTeam)"
                 :alt="`Escudo de ${match.awayTeam?.name || 'Visitante'}`"
                 width="48px"
@@ -539,11 +539,12 @@ const matchGoals = computed(() => {
   height: 52px;
   margin-bottom: 8px;
   border: 2px solid var(--tb-border);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+  background: transparent;
+  box-shadow: none;
 }
 
 .match-team__crest {
-  border-radius: 50%;
+  object-fit: contain;
 }
 
 .match-team__info {
