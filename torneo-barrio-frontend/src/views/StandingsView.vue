@@ -3,6 +3,7 @@ import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTournamentStore } from '@/stores/tournament'
 import ImagePreview from '@/components/ImagePreview.vue'
+import { getDefaultTeamLogo } from '@/utils/defaultAssets'
 
 const store = useTournamentStore()
 const router = useRouter()
@@ -152,7 +153,7 @@ onMounted(async () => {
                 <div class="sport-crest-container standings-crest-box">
                   <ImagePreview
                     :src="props.row.logoUrl || props.row.escudo_url"
-                    fallback="/images/default-team.svg"
+                    :fallback="getDefaultTeamLogo(props.row)"
                     :alt="`Escudo de ${props.row.name || props.row.nombre || 'equipo'}`"
                     width="36px"
                     height="36px"
@@ -173,32 +174,32 @@ onMounted(async () => {
 
           <!-- STATS CELLS (PJ, PG, PE, PP, GF, GC) -->
           <template #body-cell-played="props">
-            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 0.95rem;">
+            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 1rem;">
               {{ props.row.played }}
             </q-td>
           </template>
           <template #body-cell-wins="props">
-            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 0.95rem;">
+            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 1rem;">
               {{ props.row.wins }}
             </q-td>
           </template>
           <template #body-cell-draws="props">
-            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 0.95rem;">
+            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 1rem;">
               {{ props.row.draws }}
             </q-td>
           </template>
           <template #body-cell-losses="props">
-            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 0.95rem;">
+            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 1rem;">
               {{ props.row.losses }}
             </q-td>
           </template>
           <template #body-cell-goalsFor="props">
-            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 0.95rem;">
+            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 1rem;">
               {{ props.row.goalsFor }}
             </q-td>
           </template>
           <template #body-cell-goalsAgainst="props">
-            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 0.95rem;">
+            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 1rem;">
               {{ props.row.goalsAgainst }}
             </q-td>
           </template>
@@ -294,7 +295,7 @@ onMounted(async () => {
 .standings-sports-table :deep(thead th) {
   background: var(--tb-surface-raised) !important;
   color: #94a3b8 !important;
-  font-size: 0.8rem !important;
+  font-size: 1rem !important;
   font-weight: 800 !important;
   letter-spacing: 0.08em !important;
   padding: 14px 12px !important;
@@ -318,10 +319,10 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  font-size: 0.82rem;
+  font-size: 1rem;
   font-weight: 900;
   background: var(--tb-surface-raised);
   color: var(--tb-muted);
@@ -349,9 +350,9 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
-  font-size: 0.76rem;
+  width: 20px;
+  height: 20px;
+  font-size: 1rem;
   font-weight: 900;
   cursor: help;
   user-select: none;
@@ -369,12 +370,12 @@ onMounted(async () => {
 
 .movement-arrow--same {
   color: #64748b;
-  font-size: 0.68rem;
+  font-size: 1rem;
 }
 
 .movement-legend-icon {
   font-weight: 900;
-  font-size: 0.8rem;
+  font-size: 1rem;
 }
 
 /* Team Crest, Interactive Name & Links */
@@ -419,7 +420,7 @@ onMounted(async () => {
 }
 
 .standings-team-name {
-  font-size: 0.98rem;
+  font-size: 1rem;
   font-weight: 700;
   color: #ffffff;
   letter-spacing: -0.01em;
@@ -427,7 +428,7 @@ onMounted(async () => {
 }
 
 .standings-team-subtext {
-  font-size: 0.72rem;
+  font-size: 1rem;
   color: #94a3b8;
   font-weight: 500;
 }
@@ -440,7 +441,7 @@ onMounted(async () => {
   min-width: 42px;
   padding: 4px 8px;
   border-radius: 6px;
-  font-size: 0.84rem;
+  font-size: 1rem;
   font-weight: 800;
   font-family: monospace;
   letter-spacing: 0.04em;
@@ -481,7 +482,7 @@ onMounted(async () => {
 }
 
 .pts-badge small {
-  font-size: 0.68rem;
+  font-size: 1rem;
   font-weight: 800;
   opacity: 0.9;
 }

@@ -4,6 +4,7 @@ import { useQuasar } from 'quasar'
 import { useTournamentStore } from '@/stores/tournament'
 import ImagePreview from '@/components/ImagePreview.vue'
 import { isOptionalImageUrl } from '@/utils/imageUrl'
+import { getDefaultTeamLogo } from '@/utils/defaultAssets'
 
 const store = useTournamentStore()
 const $q = useQuasar()
@@ -284,8 +285,8 @@ onMounted(async () => {
                   :style="{ borderColor: team.primaryColor || '#10b981' }"
                 >
                   <ImagePreview
-                    :src="team.logoUrl"
-                    fallback="/images/default-team.svg"
+                    :src="team.logoUrl || team.escudo_url"
+                    :fallback="getDefaultTeamLogo(team)"
                     :alt="`Escudo de ${team.name}`"
                     width="44px"
                     height="44px"
@@ -407,8 +408,8 @@ onMounted(async () => {
             <q-td :props="props" class="text-center">
               <div class="sport-crest-container" style="width: 38px; height: 38px;">
                 <ImagePreview
-                  :src="props.row.logoUrl"
-                  fallback="/images/default-team.svg"
+                  :src="props.row.logoUrl || props.row.escudo_url"
+                  :fallback="getDefaultTeamLogo(props.row)"
                   :alt="`Escudo de ${props.row.name}`"
                   width="34px"
                   height="34px"
@@ -585,7 +586,7 @@ onMounted(async () => {
             <div class="sport-crest-container preview-shield-circle">
               <ImagePreview
                 :src="form.logoUrl"
-                fallback="/images/default-team.svg"
+                :fallback="getDefaultTeamLogo(form.name || form)"
                 :alt="form.name || 'Vista previa'"
                 width="68px"
                 height="68px"
@@ -630,7 +631,7 @@ onMounted(async () => {
 }
 
 .text-caption {
-  font-size: 0.95rem;
+  font-size: 1rem;
   letter-spacing: 0.04em;
 }
 
@@ -722,7 +723,7 @@ onMounted(async () => {
 }
 
 .team-ref-neighborhood {
-  font-size: 0.8rem;
+  font-size: 1rem;
   font-weight: 700;
   color: var(--tb-primary);
   margin-top: 2px;
@@ -737,7 +738,7 @@ onMounted(async () => {
 .team-ref-detail-item {
   display: flex;
   align-items: center;
-  font-size: 0.84rem;
+  font-size: 1rem;
 }
 
 .detail-label {
@@ -752,7 +753,7 @@ onMounted(async () => {
 }
 
 .team-ref-motto {
-  font-size: 0.8rem;
+  font-size: 1rem;
   color: var(--tb-muted);
   line-height: 1.3;
 }
@@ -774,7 +775,7 @@ onMounted(async () => {
 }
 
 .ref-stat-label {
-  font-size: 0.62rem;
+  font-size: 1rem;
   font-weight: 800;
   letter-spacing: 0.06em;
   color: var(--tb-muted);
@@ -782,7 +783,7 @@ onMounted(async () => {
 }
 
 .ref-stat-value {
-  font-size: 0.94rem;
+  font-size: 1rem;
   font-weight: 900;
   margin-top: 2px;
 }

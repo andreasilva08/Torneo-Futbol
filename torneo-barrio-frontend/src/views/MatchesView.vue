@@ -6,6 +6,7 @@ import ImagePreview from '@/components/ImagePreview.vue'
 import MatchSummaryCard from '@/components/MatchSummaryCard.vue'
 import { useTournamentStore, getApiErrorMessage } from '@/stores/tournament'
 import { normalizeMatchStatus } from '@/utils/matchFormatting'
+import { getDefaultTeamLogo } from '@/utils/defaultAssets'
 
 const store = useTournamentStore()
 const $q = useQuasar()
@@ -41,9 +42,9 @@ const getTeamName = (team) => {
 
 const getTeamLogo = (team) => {
   if (!team) return '/images/default-team.svg'
-  if (typeof team === 'object') return team.logoUrl || '/images/default-team.svg'
+  if (typeof team === 'object') return team.logoUrl || team.escudo_url || getDefaultTeamLogo(team)
   const found = store.teams.find((item) => item._id === team)
-  return found?.logoUrl || '/images/default-team.svg'
+  return found?.logoUrl || found?.escudo_url || getDefaultTeamLogo(found || team)
 }
 
 const getTeamStadium = (teamId) => {
@@ -56,6 +57,24 @@ const getTeamStadium = (teamId) => {
 
 watch(() => form.homeTeam, (teamId) => {
   form.stadium = getTeamStadium(teamId)
+})
+
+watch(() => form.matchday, (day) => {
+  if (!day) return
+  const matchesInDay = store.matches.filter((m) => Number(m.matchday) === Number(day))
+  if (matchesInDay.length > 0) {
+    const first = matchesInDay[0]
+    if (first.date) {
+      const d = new Date(first.date)
+      if (!Number.isNaN(d.getTime())) {
+        form.matchDate = d.toISOString().split('T')[0]
+      }
+    } else if (first.matchdayDate) {
+      form.matchDate = first.matchdayDate
+    }
+    const slots = ['09:00', '11:30', '14:30', '17:00', '19:30', '21:30']
+    form.matchTime = slots[matchesInDay.length % slots.length]
+  }
 })
 
 const formatMatchdayLabel = (matchday) => `Jornada ${Number(matchday) || 1}`
@@ -536,8 +555,8 @@ onMounted(async () => {
                 <div class="rule37-card-top">
                   <div class="rule37-crest-ring">
                     <ImagePreview
-                      :src="item.team.logoUrl"
-                      fallback="/images/default-team.svg"
+                      :src="item.team.logoUrl || item.team.escudo_url"
+                      :fallback="getDefaultTeamLogo(item.team)"
                       :alt="item.team.name"
                       width="38px"
                       height="38px"
@@ -558,20 +577,21 @@ onMounted(async () => {
                   </span>
                   <div v-else>
                     <div class="rule37-footer-label q-mb-xs">Jornadas disputadas:</div>
-                    <div class="row wrap" style="gap: 5px;">
+                    <div class="row wrap" style="gap: 6px;">
                       <span
                         v-for="day in item.matchdays"
                         :key="day"
                         class="matchday-chip-tag"
-                      style="
-                      background-color: rgb(21, 34, 50); 
-                      border: 1px solid rgb(51, 78, 109); 
-                      border-radius: 4px; 
-                      color: rgb(56, 189, 248); 
-                      padding-left: 4px; 
-                      padding-right: 4px; 
-                      letter-spacing: .5px;
-                      font-weight: bolder;"
+                        style="
+                          background-color: rgb(21, 34, 50); 
+                          border: 1px solid rgb(51, 78, 109); 
+                          border-radius: 6px; 
+                          color: rgb(56, 189, 248); 
+                          padding: 4px 8px; 
+                          letter-spacing: .5px;
+                          font-weight: 800;
+                          font-size: 1rem;
+                        "
                       >J{{ day }}</span>
                     </div>
                   </div>
@@ -597,10 +617,9 @@ onMounted(async () => {
               <div class="row items-center gap-sm">
                 <div class="matchday-header-badge">JORNADA {{ group.matchday }}</div>
                 <span class="matchday-matches-count">{{ group.matches.length }} partido{{ group.matches.length > 1 ? 's' : '' }}</span>
-                <q-badge v-if="group.isCurrent" color="primary" rounded class="text-weight-bold q-ml-xs" style="font-size: .7rem; 
+                <q-badge v-if="group.isCurrent" color="primary" rounded class="text-weight-bold q-ml-xs" style="font-size: 1rem; 
           border-radius: 8px; 
-          padding: 10px 10px; 
-          
+          padding: 8px 12px; 
         ">
                   JORNADA ACTUAL
                 </q-badge>
@@ -885,7 +904,7 @@ onMounted(async () => {
   background: transparent;
   border: none;
   color: var(--tb-muted);
-  font-size: 0.74rem;
+  font-size: 1rem;
   font-weight: 700;
   padding: 8px 10px;
   border-radius: var(--tb-radius-sm);
@@ -921,7 +940,7 @@ onMounted(async () => {
 }
 
 .matchdays-bar-title {
-  font-size: 0.74rem;
+  font-size: 1rem;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -940,7 +959,7 @@ onMounted(async () => {
   background: var(--tb-surface-raised);
   border: 1px solid var(--tb-border);
   color: var(--tb-text-secondary);
-  font-size: 0.76rem;
+  font-size: 1rem;
   font-weight: 800;
   padding: 6px 14px;
   border-radius: var(--tb-radius-md);
@@ -998,7 +1017,7 @@ onMounted(async () => {
 }
 
 .rule37-subtitle {
-  font-size: 0.8rem;
+  font-size: 1rem;
   color: #94a3b8;
   margin-top: 5px;
   line-height: 1.45;
@@ -1056,7 +1075,7 @@ onMounted(async () => {
 }
 
 .rule37-team-name {
-  font-size: 0.95rem;
+  font-size: 1rem;
   font-weight: 700;
   color: #ffffff;
   white-space: nowrap;
@@ -1080,7 +1099,7 @@ onMounted(async () => {
 }
 
 .rule37-count-total {
-  font-size: 0.85rem;
+  font-size: 1rem;
   font-weight: 700;
   color: #64748b;
 }
@@ -1092,7 +1111,7 @@ onMounted(async () => {
 }
 
 .rule37-footer-text {
-  font-size: 0.78rem;
+  font-size: 1rem;
   color: #94a3b8;
   font-weight: 500;
   word-break: break-word;
@@ -1146,7 +1165,7 @@ onMounted(async () => {
 }
 
 .matchday-header-badge {
-  font-size: 0.84rem;
+  font-size: 1rem;
   font-weight: 900;
   letter-spacing: 0.08em;
   color: var(--tb-primary);
@@ -1154,7 +1173,7 @@ onMounted(async () => {
 }
 
 .matchday-matches-count {
-  font-size: 0.8rem;
+  font-size: 1rem;
   color: var(--tb-muted);
   font-weight: 600;
   margin-inline: 15px;
@@ -1211,7 +1230,7 @@ onMounted(async () => {
 
 .comp-team-cell {
   padding: 10px 14px;
-  font-size: 0.8rem;
+  font-size: 1rem;
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -1229,7 +1248,7 @@ onMounted(async () => {
 .comp-day-head {
   padding: 8px 4px;
   text-align: center;
-  font-size: 0.7rem;
+  font-size: 1rem;
   font-weight: 800;
   color: var(--tb-muted);
   border-right: 1px solid var(--tb-border);
@@ -1239,7 +1258,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.72rem;
+  font-size: 1rem;
   font-weight: 800;
   border-right: 1px solid var(--tb-border);
   min-height: 40px;
@@ -1300,7 +1319,7 @@ onMounted(async () => {
 }
 
 .day-card-title {
-  font-size: 0.85rem;
+  font-size: 1rem;
   font-weight: 800;
   color: #ffffff;
 }
@@ -1310,7 +1329,7 @@ onMounted(async () => {
 }
 
 .day-card-sub {
-  font-size: 0.65rem;
+  font-size: 1rem;
   font-weight: 700;
   color: var(--tb-muted);
   margin-top: 2px;

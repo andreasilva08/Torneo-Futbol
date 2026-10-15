@@ -84,7 +84,7 @@ const getCondicionMeta = (val) => {
           <div class="col-12 col-sm-auto text-center">
             <div class="sport-crest-container team-hero-crest">
               <ImagePreview
-                :src="team.logoUrl"
+                :src="team.logoUrl || team.escudo_url"
                 :fallback="getDefaultTeamLogo(team)"
                 :alt="`Escudo de ${team.name}`"
                 width="92px"
@@ -260,7 +260,7 @@ const getCondicionMeta = (val) => {
 .roster-sports-table :deep(thead th) {
   background: var(--tb-surface-raised) !important;
   color: var(--tb-muted) !important;
-  font-size: 0.74rem !important;
+  font-size: 1rem !important;
   font-weight: 800 !important;
   letter-spacing: 0.08em !important;
   padding: 14px 16px !important;
@@ -288,7 +288,7 @@ const getCondicionMeta = (val) => {
   background: var(--tb-surface-raised);
   border: 1px solid var(--tb-border);
   color: #ffffff;
-  font-size: 0.85rem;
+  font-size: 1rem;
   font-weight: 900;
 }
 
@@ -298,7 +298,7 @@ const getCondicionMeta = (val) => {
   align-items: center;
   padding: 4px 10px;
   border-radius: 6px;
-  font-size: 0.74rem;
+  font-size: 1rem;
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -336,7 +336,7 @@ const getCondicionMeta = (val) => {
   background: rgba(34, 197, 94, 0.15);
   border: 1px solid rgba(34, 197, 94, 0.35);
   color: #22c55e;
-  font-size: 0.68rem;
+  font-size: 1rem;
   font-weight: 900;
   letter-spacing: 0.06em;
 }

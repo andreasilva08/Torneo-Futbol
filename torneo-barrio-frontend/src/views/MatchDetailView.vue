@@ -12,6 +12,7 @@ import {
   normalizeMatchStatus,
 } from '@/utils/matchFormatting'
 import ImagePreview from '@/components/ImagePreview.vue'
+import { getDefaultTeamLogo } from '@/utils/defaultAssets'
 
 const route = useRoute()
 const router = useRouter()
@@ -618,7 +619,15 @@ watch(() => matchEditForm.status, (status) => {
 })
 
 const confirmDeleteMatch = () => {
-  if (!match.value || deletingMatch.value) return
+  if (!match.value || deletingMatch.value || isFinished.value) {
+    if (isFinished.value) {
+      $q.notify({
+        type: 'negative',
+        message: 'Inmutabilidad de encuentros concluidos: Un partido FINALIZADO no puede ser eliminado.',
+      })
+    }
+    return
+  }
   const matchId = match.value._id
 
   $q.dialog({
@@ -1055,7 +1064,7 @@ const finishMatch = () => {
               <div class="sport-crest-container banner-crest-box">
                 <ImagePreview
                   :src="match.homeTeam?.logoUrl || match.homeTeam?.escudo_url"
-                  fallback="/images/default-team.svg"
+                  :fallback="getDefaultTeamLogo(match.homeTeam)"
                   :alt="`Escudo de ${teamName(match.homeTeam)}`"
                   width="72px"
                   height="72px"
@@ -1083,7 +1092,7 @@ const finishMatch = () => {
               <div class="sport-crest-container banner-crest-box">
                 <ImagePreview
                   :src="match.awayTeam?.logoUrl || match.awayTeam?.escudo_url"
-                  fallback="/images/default-team.svg"
+                  :fallback="getDefaultTeamLogo(match.awayTeam)"
                   :alt="`Escudo de ${teamName(match.awayTeam)}`"
                   width="72px"
                   height="72px"
@@ -1157,6 +1166,7 @@ const finishMatch = () => {
                 @click="openMatchEditDialog"
               />
               <q-btn
+                v-if="!isFinished"
                 flat
                 color="negative"
                 icon="delete"
@@ -1587,7 +1597,7 @@ const finishMatch = () => {
                 <div class="sport-crest-container match-edit-team__crest">
                   <ImagePreview
                     :src="match.homeTeam?.logoUrl || match.homeTeam?.escudo_url"
-                    fallback="/images/default-team.svg"
+                    :fallback="getDefaultTeamLogo(match.homeTeam)"
                     :alt="`Escudo de ${teamName(match.homeTeam)}`"
                     width="42px"
                     height="42px"
@@ -1600,7 +1610,7 @@ const finishMatch = () => {
                 <div class="sport-crest-container match-edit-team__crest">
                   <ImagePreview
                     :src="match.awayTeam?.logoUrl || match.awayTeam?.escudo_url"
-                    fallback="/images/default-team.svg"
+                    :fallback="getDefaultTeamLogo(match.awayTeam)"
                     :alt="`Escudo de ${teamName(match.awayTeam)}`"
                     width="42px"
                     height="42px"
@@ -1779,6 +1789,7 @@ const finishMatch = () => {
 
             <div class="row items-center justify-between q-gutter-sm q-pt-sm">
               <q-btn
+                v-if="!isFinished"
                 flat
                 color="negative"
                 icon="delete"
@@ -2258,14 +2269,14 @@ const finishMatch = () => {
 }
 
 .timeline-event-title {
-  font-size: 0.76rem;
+  font-size: 1rem;
   font-weight: 800;
   color: #ffffff;
   text-transform: uppercase;
 }
 
 .timeline-event-player {
-  font-size: 0.86rem;
+  font-size: 1rem;
   font-weight: 700;
   color: #e2e8f0;
   display: block;
@@ -2287,7 +2298,7 @@ const finishMatch = () => {
   background: #0f172a;
   border: 1px solid rgba(16, 185, 129, 0.45);
   border-radius: 9999px;
-  font-size: 0.72rem;
+  font-size: 1rem;
   font-weight: 800;
   color: #10b981;
 }
@@ -2299,7 +2310,7 @@ const finishMatch = () => {
   border: 1px solid var(--tb-border);
   border-radius: 6px;
   padding: 6px 14px;
-  font-size: 0.8rem;
+  font-size: 1rem;
   color: #e2e8f0;
 }
 
@@ -2326,6 +2337,7 @@ const finishMatch = () => {
   min-width: 0;
   color: #fff;
   font-weight: 700;
+  font-size: 1rem;
 }
 
 .match-edit-team > span {
@@ -2342,7 +2354,7 @@ const finishMatch = () => {
 .match-edit-vs {
   flex: 0 0 auto;
   color: var(--tb-muted);
-  font-size: 0.72rem;
+  font-size: 1rem;
   font-weight: 900;
   letter-spacing: 0.08em;
 }
@@ -2390,7 +2402,7 @@ const finishMatch = () => {
   border-radius: 8px;
   background: rgba(11, 17, 30, 0.55);
   color: #cbd5e1;
-  font-size: 0.78rem;
+  font-size: 1rem;
 }
 
 .match-reschedule-warning {
@@ -2408,7 +2420,7 @@ const finishMatch = () => {
   .match-edit-team {
     flex-direction: column;
     text-align: center;
-    font-size: 0.8rem;
+    font-size: 1rem;
   }
 }
 </style>

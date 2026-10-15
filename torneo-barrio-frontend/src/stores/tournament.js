@@ -306,12 +306,12 @@ export const useTournamentStore = defineStore('tournament', {
 
     async deleteMatch(matchId) {
       const deletedMatch = this.matches.find((match) => match._id === matchId) || this.matchDetail
+      if (normalizeMatchStatus(deletedMatch?.status) === 'FINISHED') {
+        throw new Error('Inmutabilidad de encuentros concluidos: Un partido con estado FINALIZADO no puede ser eliminado.')
+      }
       await api.delete(`/matches/${matchId}`)
       this.matches = this.matches.filter((match) => match._id !== matchId)
       if (this.matchDetail?._id === matchId) this.matchDetail = null
-      if (normalizeMatchStatus(deletedMatch?.status) === 'FINISHED') {
-        await this.fetchStandings()
-      }
     },
 
     async updateMatchResult(matchId, payload) {

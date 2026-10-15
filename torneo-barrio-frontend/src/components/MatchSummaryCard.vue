@@ -9,6 +9,7 @@ import {
   normalizeMatchStatus,
 } from '@/utils/matchFormatting'
 import ImagePreview from '@/components/ImagePreview.vue'
+import { getDefaultTeamLogo } from '@/utils/defaultAssets'
 import { useTournamentStore } from '@/stores/tournament'
 
 const props = defineProps({
@@ -206,8 +207,8 @@ const matchGoals = computed(() => {
           <div class="match-team match-team--home">
             <div class="sport-crest-container match-team__crest-box">
               <ImagePreview
-                :src="match.homeTeam?.logoUrl"
-                fallback="/images/default-team.svg"
+                :src="match.homeTeam?.logoUrl || match.homeTeam?.escudo_url"
+                :fallback="getDefaultTeamLogo(match.homeTeam)"
                 :alt="`Escudo de ${match.homeTeam?.name || 'Local'}`"
                 width="48px"
                 height="48px"
@@ -241,8 +242,8 @@ const matchGoals = computed(() => {
           <div class="match-team match-team--away">
             <div class="sport-crest-container match-team__crest-box">
               <ImagePreview
-                :src="match.awayTeam?.logoUrl"
-                fallback="/images/default-team.svg"
+                :src="match.awayTeam?.logoUrl || match.awayTeam?.escudo_url"
+                :fallback="getDefaultTeamLogo(match.awayTeam)"
                 :alt="`Escudo de ${match.awayTeam?.name || 'Visitante'}`"
                 width="48px"
                 height="48px"
@@ -554,17 +555,17 @@ const matchGoals = computed(() => {
 
 .match-team__name {
   color: #ffffff;
-  font-size: 0.95rem;
+  font-size: 1rem;
   font-weight: 700;
   line-height: 1.2;
   text-align: center;
   word-break: break-word;
-  max-width: 130px;
+  max-width: 140px;
 }
 
 .match-team__role {
   color: var(--tb-muted);
-  font-size: 0.65rem;
+  font-size: 1rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -624,14 +625,14 @@ const matchGoals = computed(() => {
 }
 
 .score-time {
-  font-size: 0.72rem;
+  font-size: 1rem;
   font-weight: 700;
   color: var(--tb-muted);
   margin-top: 2px;
 }
 
 .match-date-label {
-  font-size: 0.68rem;
+  font-size: 1rem;
   font-weight: 600;
   color: var(--tb-muted);
   margin-top: 8px;
@@ -667,13 +668,13 @@ const matchGoals = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 0.74rem;
+  font-size: 1rem;
   color: var(--tb-text-secondary);
   font-weight: 600;
 }
 
 .event-icon {
-  font-size: 0.8rem;
+  font-size: 1rem;
 }
 
 .event-desc {
@@ -688,7 +689,7 @@ const matchGoals = computed(() => {
   padding-top: 10px;
   border-top: 1px solid var(--tb-border);
   color: var(--tb-muted);
-  font-size: 0.72rem;
+  font-size: 1rem;
   font-weight: 500;
   text-align: center;
 }

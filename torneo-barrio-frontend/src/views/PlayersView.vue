@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useTournamentStore } from '@/stores/tournament'
 import ImagePreview from '@/components/ImagePreview.vue'
 import { isOptionalImageUrl } from '@/utils/imageUrl'
+import { getDefaultTeamLogo } from '@/utils/defaultAssets'
 
 const store = useTournamentStore()
 const $q = useQuasar()
@@ -279,7 +280,7 @@ const getPlayerTeamLogo = (player) => {
   if (player.team && typeof player.team === 'object' && player.team.logoUrl) {
     return player.team.logoUrl
   }
-  return '/images/default-team.svg'
+  return getDefaultTeamLogo(team || player)
 }
 
 const goToPlayerTeam = (player) => {
@@ -666,7 +667,7 @@ onMounted(async () => {
               <div class="sport-crest-container team-pill-crest">
                 <ImagePreview
                   :src="getPlayerTeamLogo(props.row)"
-                  fallback="/images/default-team.svg"
+                  :fallback="getDefaultTeamLogo(getPlayerTeam(props.row) || props.row)"
                   :alt="`Escudo de ${getPlayerTeamName(props.row)}`"
                   width="20px"
                   height="20px"

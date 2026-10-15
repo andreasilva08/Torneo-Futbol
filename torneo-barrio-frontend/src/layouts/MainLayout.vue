@@ -171,7 +171,7 @@ const goTo = (path) => {
       <!-- SIDEBAR FOOTER -->
       <div class="sidebar-footer q-pa-md text-caption text-grey-6 text-center">
         <div>Torneo de Barrio 2.0</div>
-        <div class="text-grey-7" style="font-size: 0.7rem;">Dark Sports UI</div>
+        <div class="text-grey-7" style="font-size: 1rem;">Dark Sports UI</div>
       </div>
     </q-drawer>
 
@@ -204,7 +204,7 @@ const goTo = (path) => {
 
 .header-subtitle {
   color: var(--tb-muted);
-  font-size: 0.68rem;
+  font-size: 1rem;
   letter-spacing: 0.1em;
   font-weight: 700;
   margin-top: 2px;
@@ -225,7 +225,7 @@ const goTo = (path) => {
 }
 
 .nav-item-label {
-  font-size: 0.88rem;
+  font-size: 1rem;
   font-weight: 600;
 }
 </style>

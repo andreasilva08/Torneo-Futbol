@@ -125,7 +125,7 @@ const handleError = () => {
 .image-preview__status {
   margin: 0;
   color: var(--tb-muted, #94a3b8);
-  font-size: 0.85rem;
+  font-size: 1rem;
   line-height: 1.4;
 }
 </style>

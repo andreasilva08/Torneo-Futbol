@@ -47,7 +47,7 @@ body,
   background: var(--tb-bg) !important;
   color: var(--tb-text);
   font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 15.5px;
+  font-size: 14px !important;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -55,14 +55,27 @@ body,
 body {
   margin: 0;
   background-color: var(--tb-bg) !important;
-  font-size: 15.5px;
 }
 
+/* ==========================================================================
+   2. TIPOGRAFÍA — Sin forzado global, Quasar usa su escala por defecto
+   ========================================================================== */
 * {
   box-sizing: border-box;
 }
 
-/* Global Image & Crest fitting to prevent any clipping */
+/* Iconos de Quasar: centrado y alineación correcta (sin forzar font-size) */
+.q-icon,
+.material-icons,
+i.q-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* ==========================================================================
+   3. CONSISTENCIA TOTAL Y CENTRADO DE ESCUDOS
+   ========================================================================== */
 img,
 .q-avatar img,
 .q-avatar .q-avatar__content,
@@ -72,8 +85,49 @@ img,
   box-sizing: border-box !important;
 }
 
-.q-avatar img {
-  padding: 4px !important;
+.q-avatar {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+  background: transparent !important;
+}
+
+/* Escudos: relleno al 85-90% del contenedor (2px padding = ~88% fill) */
+.q-avatar img,
+.q-avatar .q-avatar__content img {
+  object-fit: contain !important;
+  padding: 2px !important;
+  margin: auto !important;
+  width: 90% !important;
+  height: 90% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  display: block !important;
+}
+
+.sport-crest-container {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  overflow: hidden !important;
+  padding: 2px !important;
+  box-sizing: border-box !important;
+  background: transparent !important;
+}
+
+.sport-crest-container img,
+.sport-crest-container .image-preview,
+.sport-crest-container .image-preview__image {
+  display: flex !important;
+  margin: auto !important;
+  object-fit: contain !important;
+  width: 90% !important;
+  height: 90% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  padding: 0 !important;
 }
 
 /* Custom Sports Scrollbars */
@@ -81,13 +135,16 @@ img,
   width: 8px;
   height: 8px;
 }
+
 ::-webkit-scrollbar-track {
   background: var(--tb-bg);
 }
+
 ::-webkit-scrollbar-thumb {
   background: var(--tb-border);
   border-radius: var(--tb-radius-full);
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: var(--tb-muted-dark);
 }
@@ -162,7 +219,7 @@ img,
   background: rgba(239, 68, 68, 0.15);
   border: 1px solid rgba(239, 68, 68, 0.4);
   color: #ef4444;
-  font-size: 0.74rem;
+  font-size: 1rem;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -178,9 +235,12 @@ img,
 }
 
 @keyframes live-pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
   }
+
   50% {
     box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
   }
@@ -201,7 +261,7 @@ img,
 
 .drawer-section-title {
   padding: 8px 14px 12px;
-  font-size: 0.68rem;
+  font-size: 1rem;
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -214,7 +274,7 @@ img,
   padding: 10px 14px;
   color: var(--tb-muted) !important;
   font-weight: 600;
-  font-size: 0.88rem;
+  font-size: 1rem;
   transition: all 0.2s ease;
 }
 
@@ -240,7 +300,7 @@ img,
   background: var(--tb-surface-raised) !important;
   border: 1px solid var(--tb-border);
   color: var(--tb-text-secondary) !important;
-  font-size: 0.72rem;
+  font-size: 0.9rem;
   font-weight: 700;
   padding: 3px 8px;
   border-radius: var(--tb-radius-full);
@@ -282,37 +342,44 @@ img,
 }
 
 /* ==========================================================================
-   CRITICAL FORMS, INPUTS & LABELS (STRICTLY NO BLACK TEXT)
+   4. DIFERENCIACIÓN VISUAL DE CAMPOS (LABELS, PLACEHOLDERS E INPUTS)
    ========================================================================== */
 .q-field {
   color: var(--tb-text) !important;
 }
 
-/* Label */
-.q-field__label {
-  color: var(--tb-text-secondary) !important;
+/* Etiquetas (Labels fuera del input): Gris Claro con alto contraste */
+.q-field__label,
+.q-field--float .q-field__label,
+.q-field--outlined .q-field__label,
+.q-field__native .q-field__label {
+  color: #E2E8F0 !important;
   font-weight: 600 !important;
-  font-size: 0.88rem !important;
+  letter-spacing: 0.01em;
 }
 
 .q-field--focused .q-field__label {
-  color: var(--tb-primary) !important;
+  color: var(--tb-primary, #10b981) !important;
 }
 
-/* Inputs & textareas */
+/* Texto ingresado por el usuario (Input activo): Blanco Puro, seminegrita */
 .q-field__native,
-.q-field__input {
-  color: #ffffff !important;
+.q-field__input,
+.q-field__native span,
+.q-field__native div {
+  color: #FFFFFF !important;
   font-weight: 600 !important;
-  font-size: 0.94rem !important;
 }
 
+/* Placeholders: Gris tenue sutil (#64748B), itálico */
 .q-field__native::placeholder,
 .q-field__input::placeholder,
-.q-placeholder {
-  color: var(--tb-muted) !important;
-  opacity: 1 !important;
-  font-weight: 500 !important;
+.q-placeholder,
+input::placeholder,
+textarea::placeholder {
+  color: #ffffff !important;
+  opacity: 0.75 !important;
+  font-weight: 400 !important;
 }
 
 /* Icons, clear button, dropdown arrows */
@@ -350,7 +417,6 @@ img,
 .q-field__bottom,
 .q-field__messages {
   color: var(--tb-muted) !important;
-  font-size: 0.76rem !important;
   font-weight: 500 !important;
 }
 
@@ -467,7 +533,6 @@ img,
 
 .q-table th {
   color: var(--tb-muted) !important;
-  font-size: 0.75rem !important;
   font-weight: 800 !important;
   letter-spacing: 0.08em !important;
   text-transform: uppercase !important;
@@ -477,7 +542,6 @@ img,
 
 .q-table td {
   color: var(--tb-text) !important;
-  font-size: 0.94rem !important;
   font-weight: 600 !important;
   padding: 14px 16px !important;
   border-bottom: 1px solid var(--tb-border) !important;
@@ -572,7 +636,7 @@ img,
 }
 
 .sport-page-header__eyebrow {
-  font-size: 0.72rem;
+  font-size: 1rem;
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -614,7 +678,7 @@ img,
 }
 
 .sport-kpi-card__label {
-  font-size: 0.72rem;
+  font-size: 1rem;
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -639,13 +703,13 @@ img,
 }
 
 .sport-kpi-card__subtext {
-  font-size: 0.74rem;
+  font-size: 1rem;
   color: var(--tb-muted);
   margin-top: 8px;
   font-weight: 500;
 }
 
-/* Sports Crest Container */
+/* Sports Crest Container — escudo llena 85-90% del círculo */
 .sport-crest-container {
   display: inline-flex;
   align-items: center;
@@ -655,17 +719,19 @@ img,
   border: 1px solid var(--tb-border);
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
   overflow: hidden;
-  padding: 4px;
+  padding: 2px;
   box-sizing: border-box;
 }
 
 .sport-crest-container img {
-  width: 100% !important;
-  height: 100% !important;
+  width: 90% !important;
+  height: 90% !important;
   max-width: 100%;
   max-height: 100%;
   object-fit: contain !important;
-  padding: 2px !important;
+  padding: 0 !important;
+  display: block;
+  margin: auto;
 }
 
 /* Score Box */

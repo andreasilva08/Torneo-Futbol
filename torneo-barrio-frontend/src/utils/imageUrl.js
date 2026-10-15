@@ -5,6 +5,10 @@ export const normalizeImageUrl = (value) => {
     return ''
   }
 
+  if (input.startsWith('/') || input.startsWith('data:image/')) {
+    return input
+  }
+
   try {
     const url = new URL(input)
     return ['http:', 'https:'].includes(url.protocol) && url.hostname ? url.href : ''

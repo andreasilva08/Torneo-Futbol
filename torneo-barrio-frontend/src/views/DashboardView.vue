@@ -5,6 +5,7 @@ import { RouterLink } from 'vue-router'
 import { useTournamentStore } from '@/stores/tournament'
 import ImagePreview from '@/components/ImagePreview.vue'
 import MatchSummaryCard from '@/components/MatchSummaryCard.vue'
+import { getDefaultTeamLogo } from '@/utils/defaultAssets'
 import {
   eventTypeLabel,
   formatMatchDate,
@@ -398,8 +399,8 @@ onUnmounted(() => {
                 <!-- Crest -->
                 <div class="sport-crest-container leader-crest">
                   <ImagePreview
-                    :src="team.logoUrl"
-                    fallback="/images/default-team.svg"
+                    :src="team.logoUrl || team.escudo_url"
+                    :fallback="getDefaultTeamLogo(team)"
                     :alt="team.name"
                     width="28px"
                     height="28px"
@@ -494,7 +495,7 @@ onUnmounted(() => {
 }
 
 .section-heading {
-  font-size: 0.84rem;
+  font-size: 0.875rem;
   font-weight: 900;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -506,9 +507,9 @@ onUnmounted(() => {
   background: rgba(239, 68, 68, 0.18);
   border: 1px solid rgba(239, 68, 68, 0.4);
   color: #ef4444;
-  font-size: 0.7rem;
   font-weight: 800;
   padding: 3px 8px;
+   font-size: 0.8rem;
   border-radius: 9999px;
   letter-spacing: 0.04em;
 }
@@ -527,11 +528,11 @@ onUnmounted(() => {
   background: transparent;
   border: none;
   color: var(--tb-muted);
-  font-size: 0.74rem;
   font-weight: 700;
   padding: 6px 12px;
   border-radius: var(--tb-radius-sm);
   cursor: pointer;
+  font-size: 0.8rem;
   transition: all 0.2s ease;
 }
 

@@ -246,7 +246,7 @@ const scheduleFixtureMatches = ({ matches, teams, startDate, timezoneOffsetMinut
         matchIndexByMatchday.set(matchday, matchIndex + 1);
         const matchCount = matchesPerMatchday.get(matchday);
         const slotMinutes = matchCount > 1
-            ? Math.round((9 * 60 * matchIndex) / (matchCount - 1))
+            ? Math.round((11 * 60 * matchIndex) / (matchCount - 1))
             : 0;
 
         return {
@@ -616,11 +616,18 @@ const updateMatch = async (req, res) => {
 // Función para eliminar un partido
 const deleteMatch = async (req, res) => {
     try {
-        const deletedMatch = await Match.findByIdAndDelete(req.params.id);
-
-        if (!deletedMatch) {
+        const match = await Match.findById(req.params.id);
+        if (!match) {
             return res.status(404).json({ message: 'Partido no encontrado' });
         }
+
+        if (String(match.status).toUpperCase() === 'FINISHED') {
+            return res.status(409).json({
+                message: 'Inmutabilidad de encuentros concluidos: Un partido con estado FINALIZADO no puede ser eliminado para proteger los registros históricos y la tabla de clasificación.',
+            });
+        }
+
+        await Match.findByIdAndDelete(req.params.id);
 
         res.status(200).json({ message: 'Partido eliminado correctamente', id: req.params.id });
 
