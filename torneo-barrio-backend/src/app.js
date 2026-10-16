@@ -18,20 +18,10 @@ const app = express();
 connectDB();
 
 // Middlewares Globales
-const allowedOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(',')
-  : ['http://localhost:5173', 'http://localhost:4173', 'http://localhost:3000'];
-
 app.use(cors({
-  origin: (origin, callback) => {
-    // Permitir peticiones sin origin (ej: Postman, curl) o del listado autorizado
-    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
-      callback(null, true);
-    } else {
-      callback(new Error(`CORS: Origen no permitido → ${origin}`));
-    }
-  },
-  credentials: true,
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(express.json());
 
