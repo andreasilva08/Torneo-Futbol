@@ -446,7 +446,22 @@ textarea::placeholder {
   border-radius: var(--tb-radius-md) !important;
   box-shadow: var(--tb-shadow-lg) !important;
   color: #ffffff !important;
-  overflow: hidden;
+  overflow-y: auto !important;
+  max-height: 280px;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.04);
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: var(--tb-primary);
+  }
 }
 
 .q-menu .q-item {

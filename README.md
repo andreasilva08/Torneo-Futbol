@@ -23,11 +23,16 @@ Permite gestionar equipos, plantillas de jugadores, fixtures por jornadas, actas
 
 ## 🚀 Características Principales
 
-- **🛡️ Gestión de Clubes / Equipos**: Creación, actualización y eliminación de equipos con nombre oficial, abreviatura (`shortName`), estadio y escudo (URL de logo opcional con fallback elegante).
-- **🏃‍♂️ Gestión de Jugadores**: Registro de futbolistas vinculados a su club con dorsal, posición, condición deportiva (`TITULAR`, `SUPLENTE`, `LESIONADO`, `SANCIONADO_ROJA`, `SANCIONADO_AMARILLAS`) y fotografía.
+- **🛡️ Gestión de Clubes / Equipos**: Creación, actualización y eliminación de equipos con nombre oficial, abreviatura (`shortName`), estadio y escudo (URL de logo opcional con fallback elegante unificado).
+- **🏃‍♂️ Gestión de Jugadores (List View & Grid View)**:
+  - **Doble Modo de Visualización**: Alternancia fluida entre **Vista Tabla / Lista (`List View`)** con filas estilizadas y **Vista Tarjetas Deportivas (`Grid View`)** tipo ficha/cromo con dorsal, estadísticas y badges.
+  - **Edición Rápida en Fila (Inline Quick-Edit)**: Facilidad total para que el organizador edite el dorsal, nombre, posición, club y condición directamente desde la fila del jugador con guardado y validaciones en un solo clic, sin necesidad de abrir modales pesados.
+  - **Identidad Gráfica y Escudos Unificados**: Todos los futbolistas de un mismo club comparten de forma consistente y unificada el escudo institucional de su equipo, tanto en sus avatares como en sus badges.
+  - Control de condición deportiva (`TITULAR`, `SUPLENTE`, `LESIONADO`, `SANCIONADO_ROJA`, `SANCIONADO_AMARILLAS`) y validación de dorsales únicos por club.
 - **📅 Fixture y Calendario por Jornadas**: Programación de partidos con fecha, hora y canchas. Validación de reglas de negocio (un club no puede disputar la misma jornada dos veces).
-- **⏱️ Marcador y Cronología Detallada en Vivo**:
+- **⏱️ Marcador, Cronología y Actas de Partido en Vivo**:
   - Registro de goles (autor, asistente, minuto y autogol) con recálculo automático del marcador en tiempo real.
+  - **Selector de Plantilla con Scroll Adaptativo y Menú Optimizado**: Permite explorar y seleccionar cómodamente a cualquier jugador de la nómina completa sin bloqueos de desplazamiento.
   - Visualización completa de participantes e incidencias divididas por lado de equipo (local / visitante).
   - Posibilidad de **editar o eliminar eventos y goles en vivo** ante errores humanos antes de finalizar el encuentro.
 - **🟥 Control Disciplinario y Expulsiones Automáticas**:
@@ -165,8 +170,8 @@ Torneo-Futbol-main/
 3. Crea o verifica el archivo `.env`:
    ```env
    PORT=5001
-   MONGO_URI=mongodb+srv://torneoUser:juank123456@cluster1.p7qdqgc.mongodb.net/?appName=Cluster1
-   CORS_ORIGIN=http://localhost:5173,http://localhost:4173
+MONGO_URI=mongodb+srv://<usuario>:<password>@cluster1.p7qdqgc.mongodb.net/torneo-futbol?retryWrites=true&w=majority   
+CORS_ORIGIN=http://localhost:5173,http://localhost:4173
    ```
 
 4. Inicia el servidor de desarrollo:

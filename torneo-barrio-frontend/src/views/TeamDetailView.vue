@@ -154,9 +154,9 @@ const getCondicionMeta = (val) => {
                 <div class="row items-center no-wrap gap-md">
                   <div class="sport-crest-container" style="width: 36px; height: 36px;">
                     <ImagePreview
-                      :src="props.row.photoUrl"
-                      fallback="/images/default-player.svg"
-                      :alt="`Fotografía de ${props.row.name || props.row.nombre}`"
+                      :src="props.row.photoUrl || team?.logoUrl || team?.escudo_url"
+                      :fallback="getDefaultTeamLogo(team)"
+                      :alt="`Escudo o fotografía de ${props.row.name || props.row.nombre}`"
                       width="32px"
                       height="32px"
                     />

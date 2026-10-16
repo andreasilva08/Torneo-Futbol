@@ -1230,6 +1230,9 @@ const finishMatch = () => {
                   stack-label
                   required
                   :disable="!goalForm.team"
+                  options-dense
+                  behavior="menu"
+                  popup-content-style="max-height: 280px; overflow-y: auto;"
                 />
                 <q-select
                   v-if="!goalForm.isOwnGoal"
@@ -1242,6 +1245,9 @@ const finishMatch = () => {
                   stack-label
                   clearable
                   :disable="!goalForm.team"
+                  options-dense
+                  behavior="menu"
+                  popup-content-style="max-height: 280px; overflow-y: auto;"
                 />
                 <q-input
                   v-model.number="goalForm.minute"
@@ -1316,6 +1322,9 @@ const finishMatch = () => {
                   stack-label
                   required
                   :disable="!eventForm.team"
+                  options-dense
+                  behavior="menu"
+                  popup-content-style="max-height: 280px; overflow-y: auto;"
                 />
 
                 <!-- PARÁMETROS PARA SUSTITUCIÓN NORMAL -->
@@ -1330,6 +1339,9 @@ const finishMatch = () => {
                     stack-label
                     required
                     :disable="!eventForm.team"
+                    options-dense
+                    behavior="menu"
+                    popup-content-style="max-height: 280px; overflow-y: auto;"
                   />
                   <q-select
                     v-model="eventForm.playerIn"
@@ -1341,6 +1353,9 @@ const finishMatch = () => {
                     stack-label
                     required
                     :disable="!eventForm.team"
+                    options-dense
+                    behavior="menu"
+                    popup-content-style="max-height: 280px; overflow-y: auto;"
                   />
                 </template>
 
@@ -1356,6 +1371,9 @@ const finishMatch = () => {
                     stack-label
                     required
                     :disable="!eventForm.team"
+                    options-dense
+                    behavior="menu"
+                    popup-content-style="max-height: 280px; overflow-y: auto;"
                   />
                   <q-input
                     v-model="eventForm.injuryTime"
@@ -1375,6 +1393,9 @@ const finishMatch = () => {
                     stack-label
                     required
                     :disable="!eventForm.team"
+                    options-dense
+                    behavior="menu"
+                    popup-content-style="max-height: 280px; overflow-y: auto;"
                   />
                 </template>
 
@@ -1854,6 +1875,9 @@ const finishMatch = () => {
                 outlined
                 stack-label
                 required
+                options-dense
+                behavior="menu"
+                popup-content-style="max-height: 280px; overflow-y: auto;"
               />
               <q-select
                 v-if="!editForm.isOwnGoal"
@@ -1865,6 +1889,9 @@ const finishMatch = () => {
                 outlined
                 stack-label
                 clearable
+                options-dense
+                behavior="menu"
+                popup-content-style="max-height: 280px; overflow-y: auto;"
               />
               <q-checkbox v-model="editForm.isOwnGoal" label="¿Es autogol (gol en contra)?" color="negative" />
             </template>
@@ -1895,6 +1922,9 @@ const finishMatch = () => {
                 label="Jugador involucrado"
                 outlined
                 stack-label
+                options-dense
+                behavior="menu"
+                popup-content-style="max-height: 280px; overflow-y: auto;"
               />
 
               <template v-if="editForm.type === 'SUBSTITUTION' || editForm.type === 'INJURY'">
@@ -1906,6 +1936,9 @@ const finishMatch = () => {
                   label="Jugador que sale ⬇️"
                   outlined
                   stack-label
+                  options-dense
+                  behavior="menu"
+                  popup-content-style="max-height: 280px; overflow-y: auto;"
                 />
                 <q-select
                   v-model="editForm.playerIn"
@@ -1915,6 +1948,9 @@ const finishMatch = () => {
                   label="Jugador que ingresa ⬆️"
                   outlined
                   stack-label
+                  options-dense
+                  behavior="menu"
+                  popup-content-style="max-height: 280px; overflow-y: auto;"
                 />
               </template>
 

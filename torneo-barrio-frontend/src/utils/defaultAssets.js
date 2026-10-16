@@ -1,8 +1,11 @@
 export const getDefaultTeamLogo = (team = '') => {
-  const source = typeof team === 'string'
-    ? team
-    : team?._id || team?.id || team?.name || team?.nombre || 'default-team'
-  const normalized = String(source).trim() || 'default-team'
+  let source = 'default-team'
+  if (typeof team === 'string') {
+    source = team.trim()
+  } else if (team && typeof team === 'object') {
+    source = team.name || team.nombre || team._id || team.id || 'default-team'
+  }
+  const normalized = String(source).toLowerCase().trim() || 'default-team'
 
   let hash = 0
   for (let index = 0; index < normalized.length; index += 1) {
@@ -15,7 +18,7 @@ export const getDefaultTeamLogo = (team = '') => {
 }
 
 export const getTeamLogoUrl = (team) => {
-  if (!team) return '/images/default-team.svg'
+  if (!team) return '/images/default-team-1.svg'
   if (typeof team === 'string') {
     if (team.startsWith('http') || team.startsWith('/') || team.startsWith('data:')) {
       return team
@@ -27,4 +30,14 @@ export const getTeamLogoUrl = (team) => {
     return String(logo).trim()
   }
   return getDefaultTeamLogo(team)
+}
+
+export const getPlayerUnifiedLogo = (player, team = null) => {
+  if (player?.photoUrl && String(player.photoUrl).trim()) {
+    return String(player.photoUrl).trim()
+  }
+  if (team) {
+    return getTeamLogoUrl(team)
+  }
+  return '/images/default-player.svg'
 }

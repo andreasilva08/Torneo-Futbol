@@ -5,7 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useTournamentStore } from '@/stores/tournament'
 import ImagePreview from '@/components/ImagePreview.vue'
 import { isOptionalImageUrl } from '@/utils/imageUrl'
-import { getDefaultTeamLogo } from '@/utils/defaultAssets'
+import { getDefaultTeamLogo, getTeamLogoUrl, getPlayerUnifiedLogo } from '@/utils/defaultAssets'
 
 const store = useTournamentStore()
 const $q = useQuasar()
@@ -18,6 +18,18 @@ const statusFilter = ref('ALL')
 const dialog = ref(false)
 const editingId = ref(null)
 const saving = ref(false)
+const viewMode = ref('table') // 'table' (List View) | 'grid' (Grid View)
+
+// Estados para Edición Rápida en la misma fila
+const inlineEditId = ref(null)
+const inlineEditSaving = ref(false)
+const inlineForm = reactive({
+  name: '',
+  number: null,
+  position: 'Delantero',
+  team: '',
+  status: 'TITULAR',
+})
 
 const positionOptions = ['Portero', 'Defensa', 'Mediocampista', 'Delantero']
 const numberOptions = Array.from({ length: 99 }, (_, index) => index + 1)
@@ -274,13 +286,89 @@ const getPlayerTeamName = (player) => {
 
 const getPlayerTeamLogo = (player) => {
   const team = getPlayerTeam(player)
-  if (team && (team.logoUrl || team.escudo_url)) {
-    return team.logoUrl || team.escudo_url
+  if (team) {
+    return getTeamLogoUrl(team)
   }
-  if (player.team && typeof player.team === 'object' && player.team.logoUrl) {
-    return player.team.logoUrl
+  const raw = player.team || player.equipo || player.teamId
+  if (raw) {
+    const rawVal = typeof raw === 'object' ? (raw.name || raw._id) : raw
+    return getDefaultTeamLogo(rawVal)
   }
-  return getDefaultTeamLogo(team || player)
+  return '/images/default-team-1.svg'
+}
+
+// Unificar avatar: Si el jugador no tiene foto personal, se asigna el escudo oficial de su club
+const getPlayerAvatar = (player) => {
+  if (player.photoUrl && String(player.photoUrl).trim()) {
+    return String(player.photoUrl).trim()
+  }
+  return getPlayerTeamLogo(player)
+}
+
+// Lógica de Edición Rápida en la Fila para el Organizador
+const startInlineEdit = (player) => {
+  inlineEditId.value = player._id
+  const teamObj = getPlayerTeam(player)
+  inlineForm.name = player.name || player.nombre || ''
+  inlineForm.number = Number(player.number ?? player.dorsal) || null
+  inlineForm.position = player.position || player.posicion || 'Delantero'
+  inlineForm.team = teamObj?._id || getTeamId(player) || (store.teams[0]?._id || '')
+  inlineForm.status = player.status || player.condicion || 'TITULAR'
+}
+
+const cancelInlineEdit = () => {
+  inlineEditId.value = null
+}
+
+const saveInlineEdit = async (player) => {
+  if (!inlineForm.name.trim()) {
+    $q.notify({ type: 'warning', message: 'El nombre del jugador no puede estar vacío.' })
+    return
+  }
+
+  const newNum = Number(inlineForm.number)
+  if (!newNum || newNum < 1 || newNum > 99) {
+    $q.notify({ type: 'warning', message: 'El dorsal debe ser un número válido entre 1 y 99.' })
+    return
+  }
+
+  // Validar si el dorsal ya está ocupado por otro jugador en el mismo club
+  const targetTeamId = String(inlineForm.team)
+  const isDorsalTaken = store.players.some((p) => {
+    if (String(p._id) === String(player._id)) return false
+    const pTeamId = getTeamId(p)
+    if (pTeamId && String(pTeamId) === targetTeamId) {
+      const num = Number(p.number ?? p.dorsal)
+      return num === newNum
+    }
+    return false
+  })
+
+  if (isDorsalTaken) {
+    $q.notify({
+      type: 'negative',
+      message: `El dorsal #${newNum} ya pertenece a otro jugador de este equipo.`
+    })
+    return
+  }
+
+  inlineEditSaving.value = true
+  try {
+    const payload = {
+      name: inlineForm.name.trim(),
+      number: newNum,
+      position: inlineForm.position,
+      team: inlineForm.team,
+      status: inlineForm.status,
+    }
+    await store.updatePlayer(player._id, payload)
+    $q.notify({ type: 'positive', message: `Jugador ${payload.name} actualizado.` })
+    inlineEditId.value = null
+  } catch (error) {
+    $q.notify({ type: 'negative', message: error.response?.data?.message || 'Error al actualizar jugador.' })
+  } finally {
+    inlineEditSaving.value = false
+  }
 }
 
 const goToPlayerTeam = (player) => {
@@ -519,13 +607,36 @@ onMounted(async () => {
         </div>
       </div>
 
-      <q-btn
-        unelevated
-        color="primary"
-        icon="person_add"
-        label="Nuevo Jugador"
-        @click="openCreateDialog"
-      />
+      <div class="row items-center q-gutter-sm">
+        <div class="view-mode-toggle">
+          <button
+            type="button"
+            class="view-mode-btn"
+            :class="{ 'view-mode-btn--active': viewMode === 'grid' }"
+            @click="viewMode = 'grid'"
+            aria-label="Vista de tarjetas (Grid View)"
+          >
+            <q-icon name="grid_view" size="18px" />
+          </button>
+          <button
+            type="button"
+            class="view-mode-btn"
+            :class="{ 'view-mode-btn--active': viewMode === 'table' }"
+            @click="viewMode = 'table'"
+            aria-label="Vista de lista (List View)"
+          >
+            <q-icon name="view_list" size="18px" />
+          </button>
+        </div>
+
+        <q-btn
+          unelevated
+          color="primary"
+          icon="person_add"
+          label="Nuevo Jugador"
+          @click="openCreateDialog"
+        />
+      </div>
     </div>
 
     <!-- INTEGRATED FILTER TOOLBAR -->
@@ -599,43 +710,77 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- PLAYERS TABLE WITH PILL-STYLE ROWS -->
-    <q-card flat class="sports-panel-card">
+    <!-- LIST VIEW: PLAYERS TABLE WITH INLINE EDIT -->
+    <q-card v-if="viewMode === 'table'" flat class="sports-panel-card">
       <q-table
-  :rows="filteredPlayers"
-  :columns="[
-    { name: 'number', label: 'DORSAL', field: (row) => row.number ?? row.dorsal, align: 'center', sortable: true },
-    { name: 'player', label: 'JUGADOR', field: (row) => row.name || row.nombre, align: 'left', sortable: true },
-    { name: 'position', label: 'POSICIÓN', field: (row) => row.position || row.posicion, align: 'left', sortable: true },
-    { name: 'team', label: 'EQUIPO', field: (row) => row.team?.name || row.equipo, align: 'left', sortable: true },
-    { name: 'status', label: 'CONDICIÓN', field: (row) => row.status || row.condicion, align: 'center', sortable: true },
-    { name: 'stats', label: 'ESTADÍSTICAS', field: (row) => row.goals ?? row.goles ?? 0, align: 'center', sortable: true },
-    { name: 'actions', label: 'ACCIONES', field: 'actions', align: 'right' },
-  ]"
-  row-key="_id"
-  flat
-  hide-pagination
-  :pagination="{ rowsPerPage: 0 }"
-  class="players-pill-table"
->
-        <!-- DORSAL (BLUE BOX) -->
+        :rows="filteredPlayers"
+        :columns="[
+          { name: 'number', label: 'DORSAL', field: (row) => row.number ?? row.dorsal, align: 'center', sortable: true },
+          { name: 'player', label: 'JUGADOR', field: (row) => row.name || row.nombre, align: 'left', sortable: true },
+          { name: 'position', label: 'POSICIÓN', field: (row) => row.position || row.posicion, align: 'left', sortable: true },
+          { name: 'team', label: 'EQUIPO', field: (row) => row.team?.name || row.equipo, align: 'left', sortable: true },
+          { name: 'status', label: 'CONDICIÓN', field: (row) => row.status || row.condicion, align: 'center', sortable: true },
+          { name: 'stats', label: 'ESTADÍSTICAS', field: (row) => row.goals ?? row.goles ?? 0, align: 'center', sortable: true },
+          { name: 'actions', label: 'ACCIONES', field: 'actions', align: 'right' },
+        ]"
+        row-key="_id"
+        flat
+        hide-pagination
+        :pagination="{ rowsPerPage: 0 }"
+        class="players-pill-table"
+      >
+        <!-- DORSAL (NORMAL O INLINE INPUT) -->
         <template #body-cell-number="props">
           <q-td :props="props" class="text-center">
-            <span class="dorsal-blue-box">
+            <div v-if="inlineEditId === props.row._id" class="inline-edit-box">
+              <q-input
+                v-model.number="inlineForm.number"
+                type="number"
+                dense
+                outlined
+                min="1"
+                max="99"
+                style="width: 65px; margin: 0 auto;"
+                @keydown.enter="saveInlineEdit(props.row)"
+                @keydown.esc="cancelInlineEdit"
+              />
+            </div>
+            <span v-else class="dorsal-blue-box">
               {{ props.row.number ?? props.row.dorsal ?? '-' }}
             </span>
           </q-td>
         </template>
 
-        <!-- PLAYER NAME & AVATAR -->
+        <!-- PLAYER NAME & AVATAR UNIFICADO -->
         <template #body-cell-player="props">
           <q-td :props="props">
-            <div class="row items-center no-wrap gap-md">
+            <div v-if="inlineEditId === props.row._id" class="row items-center no-wrap gap-sm">
               <div class="sport-crest-container player-avatar-pill">
                 <ImagePreview
-                  :src="props.row.photoUrl"
-                  fallback="/images/default-player.svg"
-                  :alt="`Foto de ${props.row.name || props.row.nombre}`"
+                  :src="getPlayerAvatar(props.row)"
+                  :fallback="getPlayerTeamLogo(props.row)"
+                  :alt="`Escudo de ${props.row.name || props.row.nombre}`"
+                  width="36px"
+                  height="36px"
+                />
+              </div>
+              <q-input
+                v-model="inlineForm.name"
+                dense
+                outlined
+                class="full-width"
+                placeholder="Nombre del jugador"
+                autofocus
+                @keydown.enter="saveInlineEdit(props.row)"
+                @keydown.esc="cancelInlineEdit"
+              />
+            </div>
+            <div v-else class="row items-center no-wrap gap-md">
+              <div class="sport-crest-container player-avatar-pill">
+                <ImagePreview
+                  :src="getPlayerAvatar(props.row)"
+                  :fallback="getPlayerTeamLogo(props.row)"
+                  :alt="`Foto o escudo de ${props.row.name || props.row.nombre}`"
                   width="36px"
                   height="36px"
                 />
@@ -645,20 +790,41 @@ onMounted(async () => {
           </q-td>
         </template>
 
-        <!-- POSITION (NEON GREEN WITH ICON) -->
+        <!-- POSITION (NORMAL O INLINE SELECT) -->
         <template #body-cell-position="props">
           <q-td :props="props">
-            <div class="position-neon-tag">
+            <div v-if="inlineEditId === props.row._id">
+              <q-select
+                v-model="inlineForm.position"
+                :options="positionOptions"
+                dense
+                outlined
+                style="min-width: 140px;"
+              />
+            </div>
+            <div v-else class="position-neon-tag">
               <q-icon :name="positionIcon(props.row.position || props.row.posicion)" size="15px" class="q-mr-xs" />
               <span>{{ props.row.position || props.row.posicion }}</span>
             </div>
           </q-td>
         </template>
 
-        <!-- TEAM (CIRCULAR BADGE + NAME) - INTERACTIVO AL PLANTEL DEL EQUIPO -->
+        <!-- TEAM (NORMAL O INLINE SELECT) -->
         <template #body-cell-team="props">
           <q-td :props="props">
+            <div v-if="inlineEditId === props.row._id">
+              <q-select
+                v-model="inlineForm.team"
+                :options="teamOptions"
+                emit-value
+                map-options
+                dense
+                outlined
+                style="min-width: 170px;"
+              />
+            </div>
             <div
+              v-else
               class="team-badge-pill"
               :class="{ 'team-badge-pill--interactive': Boolean(getPlayerTeam(props.row)) }"
               @click="goToPlayerTeam(props.row)"
@@ -684,10 +850,22 @@ onMounted(async () => {
           </q-td>
         </template>
 
-        <!-- CONDICIÓN (CHIP DINÁMICO ADAPTADO A ATLAS: TITULAR, SUPLENTE, LESIONADO, SANCIONADO) -->
+        <!-- CONDICIÓN (NORMAL O INLINE SELECT) -->
         <template #body-cell-status="props">
           <q-td :props="props" class="text-center">
+            <div v-if="inlineEditId === props.row._id">
+              <q-select
+                v-model="inlineForm.status"
+                :options="condicionOptions"
+                emit-value
+                map-options
+                dense
+                outlined
+                style="min-width: 160px; margin: 0 auto;"
+              />
+            </div>
             <span
+              v-else
               class="condicion-dynamic-chip"
               :style="{
                 background: getCondicionMeta(props.row.status || props.row.condicion).bg,
@@ -701,7 +879,7 @@ onMounted(async () => {
           </q-td>
         </template>
 
-        <!-- ESTADÍSTICAS (GOLES, ASISTENCIAS, TARJETAS) -->
+        <!-- ESTADÍSTICAS -->
         <template #body-cell-stats="props">
           <q-td :props="props" class="text-center">
             <div class="row items-center justify-center gap-xs no-wrap">
@@ -721,32 +899,73 @@ onMounted(async () => {
           </q-td>
         </template>
 
-        <!-- ACCIONES (BLUE PENCIL & RED TRASH) -->
+        <!-- ACCIONES (BOTONES DE EDICIÓN RÁPIDA O NORMAL) -->
         <template #body-cell-actions="props">
           <q-td :props="props" class="text-right">
-            <q-btn
-              flat
-              round
-              dense
-              icon="edit"
-              color="secondary"
-              @click="openEditDialog(props.row)"
-              aria-label="Editar jugador"
-              class="q-mr-xs"
-            >
-              <q-tooltip>Editar Jugador</q-tooltip>
-            </q-btn>
-            <q-btn
-              flat
-              round
-              dense
-              icon="delete"
-              color="negative"
-              @click="removePlayer(props.row._id, props.row.name || props.row.nombre)"
-              aria-label="Eliminar jugador"
-            >
-              <q-tooltip>Eliminar Jugador</q-tooltip>
-            </q-btn>
+            <template v-if="inlineEditId === props.row._id">
+              <q-btn
+                flat
+                round
+                dense
+                icon="check_circle"
+                color="positive"
+                :loading="inlineEditSaving"
+                @click="saveInlineEdit(props.row)"
+                aria-label="Guardar cambios rápidos"
+                class="q-mr-xs"
+              >
+                <q-tooltip>Guardar en la Fila (Enter)</q-tooltip>
+              </q-btn>
+              <q-btn
+                flat
+                round
+                dense
+                icon="cancel"
+                color="grey-5"
+                :disable="inlineEditSaving"
+                @click="cancelInlineEdit"
+                aria-label="Cancelar edición rápida"
+              >
+                <q-tooltip>Cancelar (Esc)</q-tooltip>
+              </q-btn>
+            </template>
+            <template v-else>
+              <q-btn
+                flat
+                round
+                dense
+                icon="edit"
+                color="secondary"
+                @click="startInlineEdit(props.row)"
+                aria-label="Edición rápida en fila"
+                class="q-mr-xs"
+              >
+                <q-tooltip>Edición Rápida en Fila</q-tooltip>
+              </q-btn>
+              <q-btn
+                flat
+                round
+                dense
+                icon="tune"
+                color="primary"
+                @click="openEditDialog(props.row)"
+                aria-label="Ficha completa del jugador"
+                class="q-mr-xs"
+              >
+                <q-tooltip>Ficha y Datos Completos</q-tooltip>
+              </q-btn>
+              <q-btn
+                flat
+                round
+                dense
+                icon="delete"
+                color="negative"
+                @click="removePlayer(props.row._id, props.row.name || props.row.nombre)"
+                aria-label="Eliminar jugador"
+              >
+                <q-tooltip>Eliminar Jugador</q-tooltip>
+              </q-btn>
+            </template>
           </q-td>
         </template>
       </q-table>
@@ -755,6 +974,125 @@ onMounted(async () => {
         No se encontraron jugadores para los filtros seleccionados.
       </div>
     </q-card>
+
+    <!-- GRID VIEW: CARDS DEPORTIVAS DE JUGADORES -->
+    <div v-else class="players-cards-grid row q-col-gutter-lg">
+      <div
+        v-for="player in filteredPlayers"
+        :key="player._id"
+        class="col-12 col-sm-6 col-md-4 col-lg-3"
+      >
+        <q-card flat class="player-card sports-panel-card">
+          <!-- TOP BAR: DORSAL Y ESCUDO DE CLUB -->
+          <div class="player-card__top row items-center justify-between q-pa-md">
+            <span class="dorsal-blue-box text-weight-bolder">
+              #{{ player.number ?? player.dorsal ?? '-' }}
+            </span>
+            <div
+              class="sport-crest-container player-card__crest"
+              :title="getPlayerTeamName(player)"
+              @click="goToPlayerTeam(player)"
+              style="cursor: pointer;"
+            >
+              <ImagePreview
+                :src="getPlayerTeamLogo(player)"
+                :fallback="getDefaultTeamLogo(getPlayerTeam(player) || player)"
+                :alt="`Escudo de ${getPlayerTeamName(player)}`"
+                width="28px"
+                height="28px"
+              />
+            </div>
+          </div>
+
+          <!-- AVATAR CENTRAL UNIFICADO -->
+          <div class="player-card__avatar-wrap text-center q-pt-sm q-pb-md">
+            <div class="sport-crest-container player-card__avatar shadow-2 q-mx-auto">
+              <ImagePreview
+                :src="getPlayerAvatar(player)"
+                :fallback="getPlayerTeamLogo(player)"
+                :alt="`Avatar de ${player.name || player.nombre}`"
+                width="72px"
+                height="72px"
+              />
+            </div>
+            <div class="player-card__name text-subtitle1 text-weight-bold text-white q-mt-sm">
+              {{ player.name || player.nombre }}
+            </div>
+            <div class="text-caption text-grey-4 text-weight-medium">
+              {{ getPlayerTeamName(player) }}
+            </div>
+          </div>
+
+          <!-- BADGES: POSICIÓN Y CONDICIÓN -->
+          <div class="player-card__meta row items-center justify-center gap-xs q-px-md q-pb-md">
+            <div class="position-neon-tag">
+              <q-icon :name="positionIcon(player.position || player.posicion)" size="14px" class="q-mr-xs" />
+              <span>{{ player.position || player.posicion }}</span>
+            </div>
+            <span
+              class="condicion-dynamic-chip"
+              :style="{
+                background: getCondicionMeta(player.status || player.condicion).bg,
+                borderColor: getCondicionMeta(player.status || player.condicion).border,
+                color: getCondicionMeta(player.status || player.condicion).text,
+              }"
+            >
+              <q-icon :name="getCondicionMeta(player.status || player.condicion).icon" size="12px" class="q-mr-xs" />
+              {{ getCondicionMeta(player.status || player.condicion).label }}
+            </span>
+          </div>
+
+          <!-- ESTADÍSTICAS RÁPIDAS -->
+          <div class="player-card__stats row items-center justify-around q-py-sm q-px-md border-top-dark">
+            <div class="text-center" title="Goles anotados">
+              <div class="text-caption text-grey-5">Goles</div>
+              <div class="text-weight-bold text-positive">⚽ {{ player.goals ?? player.goles ?? 0 }}</div>
+            </div>
+            <div class="text-center" title="Asistencias">
+              <div class="text-caption text-grey-5">Asist.</div>
+              <div class="text-weight-bold text-info">👟 {{ player.assists ?? player.asistencias ?? 0 }}</div>
+            </div>
+            <div class="text-center" title="Tarjetas">
+              <div class="text-caption text-grey-5">Tarjetas</div>
+              <div class="text-weight-bold text-warning">
+                🟨 {{ player.yellowCards ?? player.tarjetasAmarillas ?? 0 }}
+                <span class="text-negative q-ml-xs">🟥 {{ player.redCards ?? player.tarjetasRojas ?? 0 }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- FOOTER: BOTONES DE ACCIÓN -->
+          <div class="player-card__actions row items-center justify-end gap-xs q-pa-sm border-top-dark">
+            <q-btn
+              flat
+              dense
+              no-caps
+              size="sm"
+              icon="edit"
+              color="secondary"
+              label="Editar"
+              @click="openEditDialog(player)"
+            />
+            <q-btn
+              flat
+              dense
+              round
+              size="sm"
+              icon="delete"
+              color="negative"
+              @click="removePlayer(player._id, player.name || player.nombre)"
+              aria-label="Eliminar jugador"
+            >
+              <q-tooltip>Eliminar Jugador</q-tooltip>
+            </q-btn>
+          </div>
+        </q-card>
+      </div>
+
+      <div v-if="!filteredPlayers.length" class="col-12 text-caption text-grey-5 text-center q-pa-xl">
+        No se encontraron jugadores para los filtros seleccionados.
+      </div>
+    </div>
 
     <!-- CREATE/EDIT PLAYER MODAL DIALOG -->
     <q-dialog v-model="dialog" persistent>
@@ -1288,6 +1626,75 @@ onMounted(async () => {
   text-decoration: line-through !important;
   font-weight: 900 !important;
   pointer-events: none !important;
+}
+
+.view-mode-toggle {
+  display: flex;
+  align-items: center;
+  background: var(--tb-surface-raised);
+  border: 1px solid var(--tb-border);
+  border-radius: var(--tb-radius-md);
+  padding: 3px;
+  gap: 2px;
+}
+
+.view-mode-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--tb-radius-sm);
+  background: transparent;
+  border: none;
+  color: var(--tb-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.view-mode-btn:hover {
+  color: #ffffff;
+}
+
+.view-mode-btn--active {
+  background: var(--tb-primary);
+  color: #0b111e !important;
+  font-weight: 700;
+}
+
+.player-card {
+  border-radius: var(--tb-radius-lg);
+  border: 1px solid var(--tb-border);
+  background: var(--tb-surface-raised);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  overflow: hidden;
+}
+
+.player-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--tb-primary);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+}
+
+.player-card__avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 2px solid var(--tb-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.border-top-dark {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.inline-edit-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 @media (max-width: 600px) {
