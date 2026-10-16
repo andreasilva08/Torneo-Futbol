@@ -35,6 +35,7 @@ const formatMatch = (matchDoc) => {
 const TEAM_FIELDS = 'name nombre shortName siglas logoUrl escudo_url stadium cancha estadio';
 const PLAYER_FIELDS = 'name nombre number dorsal photoUrl';
 const MATCH_STATUSES = ['SCHEDULED', 'IN_PROGRESS', 'FINISHED', 'SUSPENDED', 'POSTPONED'];
+const LIVE_MATCH_STATUSES = new Set(['IN_PROGRESS', 'LIVE', 'EN VIVO', 'INICIADO']);
 const RESCHEDULED_STATUSES = ['SUSPENDED', 'POSTPONED'];
 const GENERIC_VENUES = new Set(['cancha local', 'cancha principal']);
 const fixtureFormattersByTimeZone = new Map();
@@ -776,8 +777,8 @@ const updateMatchEvents = async (req, res) => {
         if (!match) {
             return res.status(404).json({ message: 'Partido no encontrado para registrar eventos' });
         }
-        if (String(match.status).toUpperCase() === 'FINISHED') {
-            return res.status(409).json({ message: 'No se pueden agregar ni modificar incidencias de un partido finalizado.' });
+        if (!LIVE_MATCH_STATUSES.has(String(match.status || '').trim().toUpperCase())) {
+            return res.status(400).json({ message: 'Acción no permitida: el partido no está en juego' });
         }
 
         const validTeamsIds = [match.homeTeam.toString(), match.awayTeam.toString()];

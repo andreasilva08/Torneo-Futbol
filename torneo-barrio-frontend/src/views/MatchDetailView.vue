@@ -66,7 +66,9 @@ const editForm = reactive({
 
 const match = computed(() => store.matchDetail)
 const isFinished = computed(() => normalizeMatchStatus(match.value?.status) === 'FINISHED')
-const isLive = computed(() => normalizeMatchStatus(match.value?.status) === 'IN_PROGRESS')
+const isMatchLive = computed(() => ['IN_PROGRESS', 'LIVE', 'EN VIVO', 'INICIADO']
+  .includes(normalizeMatchStatus(match.value?.status)))
+const isLive = computed(() => isMatchLive.value)
 const isSuspended = computed(() => ['SUSPENDED', 'POSTPONED'].includes(normalizeMatchStatus(match.value?.status)))
 const isPostponed = computed(() => normalizeMatchStatus(match.value?.status) === 'POSTPONED')
 const hasValidScheduleDate = computed(() => {
@@ -498,12 +500,16 @@ const apiEvents = () => (match.value?.events || []).map((event) => ({
 }))
 
 const scoreFor = (teamId, goals) => goals.filter((goal) => String(goal.team) === String(teamId)).length
+const notifyIfMatchNotLive = () => {
+  if (!isMatchLive.value) {
+    $q.notify({ type: 'warning', message: 'Debes iniciar el partido para poder registrar eventos' })
+  }
+}
 const matchStatusOptions = [
   { label: 'Programado', value: 'SCHEDULED' },
   { label: 'En vivo', value: 'IN_PROGRESS' },
   { label: 'Finalizado', value: 'FINISHED' },
   { label: 'Suspendido', value: 'SUSPENDED' },
-  { label: 'Aplazado', value: 'POSTPONED' },
 ]
 
 const getLocalDateInput = (value) => {
@@ -653,6 +659,10 @@ const confirmDeleteMatch = () => {
 
 // ─── Registro de Goles ────────────────────────────────────────────────────────
 const registerGoal = async () => {
+  if (!isMatchLive.value) {
+    notifyIfMatchNotLive()
+    return
+  }
   if (!match.value) return
 
   goalSaving.value = true
@@ -711,6 +721,10 @@ const registerGoal = async () => {
 
 // ─── Registro de Incidencias / Eventos ─────────────────────────────────────────
 const registerEvent = async () => {
+  if (!isMatchLive.value) {
+    notifyIfMatchNotLive()
+    return
+  }
   if (!match.value) return
 
   eventSaving.value = true
@@ -804,6 +818,10 @@ const openEditItem = (event) => {
 }
 
 const saveEditedItem = async () => {
+  if (!isMatchLive.value) {
+    notifyIfMatchNotLive()
+    return
+  }
   editSaving.value = true
   try {
     const homeTeamId = getId(match.value.homeTeam)
@@ -1038,10 +1056,7 @@ const finishMatch = () => {
                 <span class="flag-symbol">🏁</span>
                 <span>FINALIZADO</span>
               </div>
-              <div v-else-if="isSuspended" class="match-flag-badge match-flag-badge--suspended">
-                <q-icon name="pause_circle" size="14px" class="q-mr-xs" />
-                <span>{{ isPostponed ? 'APLAZADO' : 'SUSPENDIDO' }}</span>
-              </div>
+              
               <div v-else class="match-flag-badge match-flag-badge--scheduled" style= "display: inline-flex;
     align-items: center;
     background: rgba(59, 130, 246, 0.12);
@@ -1193,7 +1208,10 @@ const finishMatch = () => {
                 Solo jugadores titulares o suplentes habilitados (no expulsados ni lesionados).
               </div>
 
-              <q-form class="q-gutter-y-md" @submit.prevent="registerGoal">
+              <q-banner v-if="!isMatchLive" dense class="bg-warning text-dark q-mb-md">
+                Debes iniciar el partido para poder registrar eventos.
+              </q-banner>
+              <q-form class="q-gutter-y-md" @submit.prevent="registerGoal" @click.capture="notifyIfMatchNotLive">
                 <!-- TOGGLE AUTOGOL -->
                 <div class="row items-center justify-between q-pa-sm rounded-borders" style="background: rgba(239, 68, 68, 0.08); border: 1px dashed rgba(239, 68, 68, 0.35);">
                   <div class="row items-center gap-xs">
@@ -1207,7 +1225,7 @@ const finishMatch = () => {
                       </div>
                     </div>
                   </div>
-                  <q-toggle v-model="goalForm.isOwnGoal" color="negative" dense />
+                  <q-toggle v-model="goalForm.isOwnGoal" color="negative" dense :disable="!isMatchLive" />
                 </div>
 
                 <q-select
@@ -1219,6 +1237,7 @@ const finishMatch = () => {
                   outlined
                   stack-label
                   required
+                  :disable="!isMatchLive"
                 />
                 <q-select
                   v-model="goalForm.player"
@@ -1229,7 +1248,7 @@ const finishMatch = () => {
                   outlined
                   stack-label
                   required
-                  :disable="!goalForm.team"
+                  :disable="!isMatchLive || !goalForm.team"
                   options-dense
                   behavior="menu"
                   popup-content-style="max-height: 280px; overflow-y: auto;"
@@ -1244,7 +1263,7 @@ const finishMatch = () => {
                   outlined
                   stack-label
                   clearable
-                  :disable="!goalForm.team"
+                  :disable="!isMatchLive || !goalForm.team"
                   options-dense
                   behavior="menu"
                   popup-content-style="max-height: 280px; overflow-y: auto;"
@@ -1258,6 +1277,7 @@ const finishMatch = () => {
                   outlined
                   stack-label
                   required
+                  :disable="!isMatchLive"
                 />
                 <q-btn
                   type="submit"
@@ -1266,7 +1286,7 @@ const finishMatch = () => {
                   :label="goalForm.isOwnGoal ? 'Guardar Autogol' : 'Guardar Gol'"
                   class="full-width q-py-sm"
                   :loading="goalSaving.value"
-                  :disable="!goalForm.team || !goalForm.player"
+                  :disable="!isMatchLive || !goalForm.team || !goalForm.player"
                 />
               </q-form>
             </q-card-section>
@@ -1283,7 +1303,10 @@ const finishMatch = () => {
               </div>
               <div class="text-caption text-grey-5 q-mb-md">Sanciones, asistencias, sustituciones y bajas médicas.</div>
 
-              <q-form class="q-gutter-y-md" @submit.prevent="registerEvent">
+              <q-banner v-if="!isMatchLive" dense class="bg-warning text-dark q-mb-md">
+                Debes iniciar el partido para poder registrar eventos.
+              </q-banner>
+              <q-form class="q-gutter-y-md" @submit.prevent="registerEvent" @click.capture="notifyIfMatchNotLive">
                 <q-select
                   v-model="eventForm.type"
                   :options="[
@@ -1297,6 +1320,7 @@ const finishMatch = () => {
                   label="Tipo de Incidencia"
                   outlined
                   stack-label
+                  :disable="!isMatchLive"
                 />
 
                 <q-select
@@ -1308,6 +1332,7 @@ const finishMatch = () => {
                   outlined
                   stack-label
                   required
+                  :disable="!isMatchLive"
                 />
 
                 <!-- JUGADOR PARA TARJETA O ASISTENCIA -->
@@ -1321,7 +1346,7 @@ const finishMatch = () => {
                   outlined
                   stack-label
                   required
-                  :disable="!eventForm.team"
+                  :disable="!isMatchLive || !eventForm.team"
                   options-dense
                   behavior="menu"
                   popup-content-style="max-height: 280px; overflow-y: auto;"
@@ -1338,7 +1363,7 @@ const finishMatch = () => {
                     outlined
                     stack-label
                     required
-                    :disable="!eventForm.team"
+                    :disable="!isMatchLive || !eventForm.team"
                     options-dense
                     behavior="menu"
                     popup-content-style="max-height: 280px; overflow-y: auto;"
@@ -1352,7 +1377,7 @@ const finishMatch = () => {
                     outlined
                     stack-label
                     required
-                    :disable="!eventForm.team"
+                    :disable="!isMatchLive || !eventForm.team"
                     options-dense
                     behavior="menu"
                     popup-content-style="max-height: 280px; overflow-y: auto;"
@@ -1370,7 +1395,7 @@ const finishMatch = () => {
                     outlined
                     stack-label
                     required
-                    :disable="!eventForm.team"
+                    :disable="!isMatchLive || !eventForm.team"
                     options-dense
                     behavior="menu"
                     popup-content-style="max-height: 280px; overflow-y: auto;"
@@ -1382,6 +1407,7 @@ const finishMatch = () => {
                     stack-label
                     placeholder="Ej: 15 días"
                     required
+                    :disable="!isMatchLive"
                   />
                   <q-select
                     v-model="eventForm.playerIn"
@@ -1392,7 +1418,7 @@ const finishMatch = () => {
                     outlined
                     stack-label
                     required
-                    :disable="!eventForm.team"
+                    :disable="!isMatchLive || !eventForm.team"
                     options-dense
                     behavior="menu"
                     popup-content-style="max-height: 280px; overflow-y: auto;"
@@ -1408,6 +1434,7 @@ const finishMatch = () => {
                   outlined
                   stack-label
                   required
+                  :disable="!isMatchLive"
                 />
 
                 <q-btn
@@ -1417,7 +1444,7 @@ const finishMatch = () => {
                   label="Guardar Incidencia"
                   class="full-width q-py-sm"
                   :loading="eventSaving.value"
-                  :disable="!eventForm.team"
+                  :disable="!isMatchLive || !eventForm.team"
                 />
               </q-form>
             </q-card-section>
@@ -1501,7 +1528,7 @@ const finishMatch = () => {
                   </div>
 
                   <!-- ACCIONES PARA CORREGIR EL ACTA -->
-                  <div v-if="!isFinished" class="row items-center q-ml-xs">
+                  <div v-if="isMatchLive" class="row items-center q-ml-xs">
                     <q-btn flat round dense icon="edit" color="secondary" size="11px" @click="openEditItem(event)">
                       <q-tooltip>Editar suceso</q-tooltip>
                     </q-btn>
@@ -1521,7 +1548,7 @@ const finishMatch = () => {
               <div class="timeline-side timeline-side--right">
                 <div v-if="event.side === 'away'" class="timeline-event-card timeline-event-card--away">
                   <!-- ACCIONES PARA CORREGIR EL ACTA -->
-                  <div v-if="!isFinished" class="row items-center q-mr-xs">
+                  <div v-if="isMatchLive" class="row items-center q-mr-xs">
                     <q-btn flat round dense icon="edit" color="secondary" size="11px" @click="openEditItem(event)">
                       <q-tooltip>Editar suceso</q-tooltip>
                     </q-btn>
@@ -1585,7 +1612,7 @@ const finishMatch = () => {
                   <strong class="q-mr-xs">{{ event.label }}:</strong>
                   <span>{{ event.playerName }}</span>
                   <span v-if="event.assistName" class="text-info q-ml-xs">(Asistencia: {{ event.assistName }})</span>
-                  <template v-if="!isFinished">
+                  <template v-if="isMatchLive">
                     <q-btn flat round dense icon="edit" color="secondary" size="10px" class="q-ml-sm" @click="openEditItem(event)" />
                     <q-btn flat round dense icon="delete" color="negative" size="10px" @click="removeItem(event)" />
                   </template>
@@ -1976,7 +2003,7 @@ const finishMatch = () => {
 
             <div class="row justify-end gap-sm q-pt-md">
               <q-btn flat label="Cancelar" color="grey-5" v-close-popup />
-              <q-btn unelevated color="primary" label="Guardar Corrección" type="submit" :loading="editSaving" />
+              <q-btn unelevated color="primary" label="Guardar Corrección" type="submit" :loading="editSaving" :disable="!isMatchLive" />
             </div>
           </q-form>
         </q-card>
@@ -2307,6 +2334,7 @@ const finishMatch = () => {
 .timeline-event-title {
   font-size: 1rem;
   font-weight: 800;
+  margin-right: 4px;
   color: #ffffff;
   text-transform: uppercase;
 }

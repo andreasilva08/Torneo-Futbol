@@ -5,7 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useTournamentStore } from '@/stores/tournament'
 import ImagePreview from '@/components/ImagePreview.vue'
 import { isOptionalImageUrl } from '@/utils/imageUrl'
-import { getDefaultTeamLogo, getTeamLogoUrl, getPlayerUnifiedLogo } from '@/utils/defaultAssets'
+import { getDefaultTeamLogo } from '@/utils/defaultAssets'
 
 const store = useTournamentStore()
 const $q = useQuasar()
@@ -257,25 +257,37 @@ const numberOptionsList = computed(() => numberOptions.map((value) => ({
 
 // Declarar getTeamId SOLO UNA VEZ
 const getTeamId = (player) => {
-  const rawTeam = player.team || player.equipo
+  const rawTeam = player.teamId || player.team || player.equipo
   if (!rawTeam) return ''
   if (typeof rawTeam === 'object') return String(rawTeam._id || rawTeam.id || '')
   return String(rawTeam)
 }
 
 const getPlayerTeam = (player) => {
-  const raw = player.team || player.equipo || player.teamId
-  if (!raw) return null
-  if (typeof raw === 'object' && (raw._id || raw.id)) {
-    const rawId = String(raw._id || raw.id)
-    const found = store.teams.find((t) => String(t._id) === rawId)
-    return found || raw
+  const playerTeam = player.team
+  const teamId = player.teamId || (
+    playerTeam && typeof playerTeam === 'object'
+      ? playerTeam._id || playerTeam.id
+      : ''
+  )
+  if (teamId) {
+    const teamById = store.teams.find((team) => String(team._id || team.id) === String(teamId))
+    if (teamById) return teamById
   }
-  const str = String(raw).trim()
-  const foundById = store.teams.find((t) => String(t._id) === str)
-  if (foundById) return foundById
-  const foundByName = store.teams.find((t) => (t.name || t.nombre || '').toLowerCase().trim() === str.toLowerCase())
-  return foundByName || null
+
+  if (playerTeam && typeof playerTeam === 'object' && (playerTeam._id || playerTeam.id)) {
+    const teamByReference = store.teams.find((team) => String(team._id || team.id) === String(playerTeam._id || playerTeam.id))
+    if (teamByReference) return teamByReference
+    return playerTeam
+  }
+
+  const rawTeam = player.equipo || playerTeam
+  if (!rawTeam) return null
+
+  const teamValue = String(rawTeam).trim()
+  return store.teams.find((team) => String(team._id || team.id) === teamValue) ||
+    store.teams.find((team) => (team.name || team.nombre || '').toLowerCase().trim() === teamValue.toLowerCase()) ||
+    null
 }
 
 const getPlayerTeamName = (player) => {
@@ -286,23 +298,15 @@ const getPlayerTeamName = (player) => {
 
 const getPlayerTeamLogo = (player) => {
   const team = getPlayerTeam(player)
-  if (team) {
-    return getTeamLogoUrl(team)
-  }
-  const raw = player.team || player.equipo || player.teamId
-  if (raw) {
-    const rawVal = typeof raw === 'object' ? (raw.name || raw._id) : raw
-    return getDefaultTeamLogo(rawVal)
-  }
-  return '/images/default-team-1.svg'
+  if (team) return team.logoUrl || team.escudo_url || team.logo || getDefaultTeamLogo(team)
+  return getDefaultTeamLogo(getTeamId(player) || player)
 }
 
-// Unificar avatar: Si el jugador no tiene foto personal, se asigna el escudo oficial de su club
-const getPlayerAvatar = (player) => {
-  if (player.photoUrl && String(player.photoUrl).trim()) {
-    return String(player.photoUrl).trim()
+const handlePlayerAvatarError = (event) => {
+  const image = event.target
+  if (!image.src.endsWith('/images/default-avatar.svg')) {
+    image.src = '/images/default-avatar.svg'
   }
-  return getPlayerTeamLogo(player)
 }
 
 // Lógica de Edición Rápida en la Fila para el Organizador
@@ -756,12 +760,11 @@ onMounted(async () => {
           <q-td :props="props">
             <div v-if="inlineEditId === props.row._id" class="row items-center no-wrap gap-sm">
               <div class="sport-crest-container player-avatar-pill">
-                <ImagePreview
-                  :src="getPlayerAvatar(props.row)"
-                  :fallback="getPlayerTeamLogo(props.row)"
+                <img
+                  :src="props.row.photoUrl || props.row.foto_url || '/images/default-avatar.svg'"
                   :alt="`Escudo de ${props.row.name || props.row.nombre}`"
-                  width="36px"
-                  height="36px"
+                  class="player-avatar-image"
+                  @error="handlePlayerAvatarError"
                 />
               </div>
               <q-input
@@ -777,12 +780,11 @@ onMounted(async () => {
             </div>
             <div v-else class="row items-center no-wrap gap-md">
               <div class="sport-crest-container player-avatar-pill">
-                <ImagePreview
-                  :src="getPlayerAvatar(props.row)"
-                  :fallback="getPlayerTeamLogo(props.row)"
-                  :alt="`Foto o escudo de ${props.row.name || props.row.nombre}`"
-                  width="36px"
-                  height="36px"
+                <img
+                  :src="props.row.photoUrl || props.row.foto_url || '/images/default-avatar.svg'"
+                  :alt="`Foto de ${props.row.name || props.row.nombre}`"
+                  class="player-avatar-image"
+                  @error="handlePlayerAvatarError"
                 />
               </div>
               <div class="player-name-bold">{{ props.row.name || props.row.nombre }}</div>
@@ -1007,12 +1009,11 @@ onMounted(async () => {
           <!-- AVATAR CENTRAL UNIFICADO -->
           <div class="player-card__avatar-wrap text-center q-pt-sm q-pb-md">
             <div class="sport-crest-container player-card__avatar shadow-2 q-mx-auto">
-              <ImagePreview
-                :src="getPlayerAvatar(player)"
-                :fallback="getPlayerTeamLogo(player)"
+              <img
+                :src="player.photoUrl || player.foto_url || '/images/default-avatar.svg'"
                 :alt="`Avatar de ${player.name || player.nombre}`"
-                width="72px"
-                height="72px"
+                class="player-avatar-image"
+                @error="handlePlayerAvatarError"
               />
             </div>
             <div class="player-card__name text-subtitle1 text-weight-bold text-white q-mt-sm">
@@ -1392,6 +1393,14 @@ onMounted(async () => {
   flex-shrink: 0;
 }
 
+.player-avatar-image {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 50%;
+  object-fit: cover !important;
+}
+
 .player-name-bold {
   font-size: 0.95rem;
   font-weight: 800;
@@ -1685,6 +1694,13 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   background: rgba(255, 255, 255, 0.05);
+}
+
+.player-card__avatar .player-avatar-image {
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 50%;
+  object-fit: cover !important;
 }
 
 .border-top-dark {

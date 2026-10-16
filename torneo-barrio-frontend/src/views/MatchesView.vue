@@ -80,32 +80,28 @@ watch(() => form.matchday, (day) => {
 const formatMatchdayLabel = (matchday) => `Jornada ${Number(matchday) || 1}`
 
 const getFinishedMatchdaysForTeam = (teamId) => {
-  if (!teamId) return []
+  const selectedTeamId = toIdStr(teamId)
+  if (!selectedTeamId) return []
 
   return store.matches
     .filter((match) => normalizeMatchStatus(match.status) === 'FINISHED' && (
-      (typeof match.homeTeam === 'object' ? match.homeTeam?._id : match.homeTeam) === teamId ||
-      (typeof match.awayTeam === 'object' ? match.awayTeam?._id : match.awayTeam) === teamId
+      toIdStr(match.homeTeam) === selectedTeamId ||
+      toIdStr(match.awayTeam) === selectedTeamId
     ))
     .map((match) => Number(match.matchday || 0))
     .filter((value) => Number.isInteger(value) && value > 0)
 }
 
-const getOccupiedMatchdaysForTeam = (teamId) => {
-  if (!teamId) return []
+const toIdStr = (val) => String(val?._id || val?.id || val || '').trim()
 
-  return store.matches
-    .filter((match) => (
-      (typeof match.homeTeam === 'object' ? match.homeTeam?._id : match.homeTeam) === teamId ||
-      (typeof match.awayTeam === 'object' ? match.awayTeam?._id : match.awayTeam) === teamId
-    ))
-    .map((match) => Number(match.matchday || 0))
-    .filter((value) => Number.isInteger(value) && value > 0)
-}
+const isMatchdayBlockedForTeam = (teamId, currentDay) => {
+  const selectedTeamId = toIdStr(teamId)
+  if (!selectedTeamId || !currentDay) return false
 
-const isMatchdayBlockedForTeam = (teamId, matchday) => {
-  if (!teamId || !matchday) return false
-  return getOccupiedMatchdaysForTeam(teamId).includes(Number(matchday))
+  return store.matches.some((match) => (
+    Number(match.matchday) === Number(currentDay) &&
+    [match.homeTeam, match.awayTeam].some((team) => toIdStr(team) === selectedTeamId)
+  ))
 }
 
 const totalFixtureRounds = computed(() => Math.max(
@@ -114,24 +110,51 @@ const totalFixtureRounds = computed(() => Math.max(
   ...store.matches.map((match) => Number(match.matchday) || 0),
 ))
 
-const matchdayComparison = computed(() => Array.from({ length: Math.max(38, totalFixtureRounds.value) }, (_, index) => {
-  const value = index + 1
-  const homeDisputed = isMatchdayBlockedForTeam(form.homeTeam, value)
-  const awayDisputed = isMatchdayBlockedForTeam(form.awayTeam, value)
-  const available = !homeDisputed && !awayDisputed
-  const selected = form.matchday === value
+const matchdayComparison = computed(() => {
+  const days = []
+  for (let currentDay = 1; currentDay <= 38; currentDay += 1) {
+    const homeDisputed = isMatchdayBlockedForTeam(form.homeTeam, currentDay)
+    const awayDisputed = isMatchdayBlockedForTeam(form.awayTeam, currentDay)
 
-  return {
-    value,
-    label: `J${value}`,
-    homeDisputed,
-    awayDisputed,
-    available,
-    selected,
+    days.push({
+      value: currentDay,
+      label: `J${currentDay}`,
+      homeDisputed,
+      awayDisputed,
+      available: !homeDisputed && !awayDisputed,
+      selected: Number(form.matchday) === Number(currentDay),
+    })
   }
-}))
 
-const availableMatchdays = computed(() => matchdayComparison.value.filter((day) => day.available).map((day) => day.value))
+  return days
+})
+
+const availableMatchdays = computed(() => {
+  const homeId = toIdStr(form.homeTeam)
+  const awayId = toIdStr(form.awayTeam)
+  if (!homeId || !awayId) return []
+
+  const freeDays = []
+  for (let day = 1; day <= 38; day += 1) {
+    const homeHasMatch = store.matches.some((match) => (
+      Number(match.matchday) === day &&
+      (toIdStr(match.homeTeam) === homeId || toIdStr(match.awayTeam) === homeId)
+    ))
+    const awayHasMatch = store.matches.some((match) => (
+      Number(match.matchday) === day &&
+      (toIdStr(match.homeTeam) === awayId || toIdStr(match.awayTeam) === awayId)
+    ))
+
+    if (!homeHasMatch && !awayHasMatch) freeDays.push(day)
+  }
+
+  return freeDays
+})
+
+const availableMatchdayOptions = computed(() => availableMatchdays.value.map((day) => ({
+  label: `Jornada ${day}`,
+  value: day,
+})))
 
 const generateFixture = () => {
   $q.dialog({
@@ -771,20 +794,17 @@ onMounted(async () => {
               <div class="text-subtitle2 text-weight-bold text-white q-mb-sm">
                 Selecciona la Jornada Oficial
               </div>
-              <div v-if="availableMatchdays.length" class="available-days-grid">
-                <button
-                  v-for="day in availableMatchdays"
-                  :key="`avail-${day}`"
-                  type="button"
-                  class="day-card-btn"
-                  :class="{ 'day-card-btn--selected': form.matchday === day }"
-                  @click="form.matchday = day"
-                >
-                  <span class="day-card-title">Jornada {{ day }}</span>
-                  <span class="day-card-sub">{{ form.matchday === day ? 'Seleccionada ✔' : 'Disponible' }}</span>
-                </button>
-              </div>
-              <div v-else class="text-caption text-negative">
+              <q-select
+                v-if="availableMatchdays.length > 0"
+                v-model="form.matchday"
+                :options="availableMatchdayOptions"
+                emit-value
+                map-options
+                label="Jornada disponible"
+                outlined
+                dense
+              />
+              <div v-if="availableMatchdays.length === 0" class="text-caption text-negative">
                 No hay jornadas libres simultáneamente para estos dos equipos.
               </div>
             </div>
@@ -949,9 +969,32 @@ onMounted(async () => {
 
 .matchdays-scroll-row {
   display: flex;
+  flex-wrap: nowrap;
   gap: 8px;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
+  overflow-y: hidden;
   padding-bottom: 4px;
+  white-space: nowrap;
+  overscroll-behavior-x: contain;
+  scroll-behavior: smooth;
+  scrollbar-color: var(--tb-primary) var(--tb-surface-raised);
+  scrollbar-width: thin;
+}
+
+.matchdays-scroll-row::-webkit-scrollbar {
+  height: 6px;
+}
+
+.matchdays-scroll-row::-webkit-scrollbar-track {
+  background: var(--tb-surface-raised);
+  border-radius: 999px;
+}
+
+.matchdays-scroll-row::-webkit-scrollbar-thumb {
+  background: var(--tb-primary);
+  border-radius: 999px;
 }
 
 .matchday-chip-btn {
@@ -1182,8 +1225,9 @@ onMounted(async () => {
 
 /* Modal Dialog */
 .schedule-dialog-card {
-  width: 94vw;
-  max-width: 780px;
+  width: 96vw;
+  max-width: 60vw;
+  overflow: visible;
   background: var(--tb-surface) !important;
   border: 1px solid var(--tb-border);
   border-radius: var(--tb-radius-lg);
@@ -1196,6 +1240,10 @@ onMounted(async () => {
 }
 
 .comparison-block {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: visible;
   background: var(--tb-surface-raised);
   border: 1px solid var(--tb-border);
   border-radius: var(--tb-radius-md);
@@ -1203,15 +1251,40 @@ onMounted(async () => {
 }
 
 .comparison-table-wrapper {
-  overflow-x: auto;
+  display: block !important;
+  width: 100% !important;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto !important;
+  overflow-y: hidden;
+  white-space: nowrap !important;
+  padding-bottom: 8px;
+  overscroll-behavior-x: contain;
+  scrollbar-color: var(--tb-primary) var(--tb-surface-raised);
+  scrollbar-width: thin;
+}
+
+.comparison-table-wrapper::-webkit-scrollbar {
+  height: 8px;
+}
+
+.comparison-table-wrapper::-webkit-scrollbar-track {
+  background: var(--tb-surface-raised);
+  border-radius: 999px;
+}
+
+.comparison-table-wrapper::-webkit-scrollbar-thumb {
+  background: var(--tb-primary);
+  border-radius: 999px;
 }
 
 .comp-matrix-table {
+  width: max-content;
   min-width: 900px;
   border: 1px solid var(--tb-border);
   border-radius: var(--tb-radius-sm);
   background: var(--tb-surface);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .comp-row {
@@ -1243,16 +1316,22 @@ onMounted(async () => {
 
 .comp-days-track {
   display: grid;
-  grid-template-columns: repeat(38, minmax(42px, 1fr));
+  grid-template-columns: repeat(38, minmax(40px, 1fr));
+  gap: 2px;
+  width: max-content;
+  flex-shrink: 0;
 }
 
 .comp-day-head {
-  padding: 8px 4px;
+  min-width: 40px;
+  padding: 4px 6px;
   text-align: center;
   font-size: 1rem;
   font-weight: 800;
   color: var(--tb-muted);
-  border-right: 1px solid var(--tb-border);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .comp-cell {
@@ -1261,9 +1340,13 @@ onMounted(async () => {
   justify-content: center;
   font-size: 1rem;
   font-weight: 800;
-  border-right: 1px solid var(--tb-border);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  min-width: 40px;
   min-height: 40px;
+  padding: 4px 6px;
   color: var(--tb-muted);
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .comp-cell--done {
