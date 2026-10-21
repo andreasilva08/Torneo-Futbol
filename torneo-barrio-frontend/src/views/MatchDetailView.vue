@@ -174,12 +174,7 @@ const onEventTeamChange = (value) => {
 const formatPlayerOption = (player) => {
   const num = player.number ?? player.dorsal ?? '?'
   const name = player.name || player.nombre || 'Jugador'
-  const cond = player.status || player.condicion || 'TITULAR'
-  const isExpelled = expelledPlayerIds.value.has(getId(player))
-  const availability = getPlayerAvailability(player)
-  const tag = isExpelled ? ' [EXPULSADO]' : cond !== 'TITULAR' ? ` [${cond}]` : ''
-  const returnTag = availability.label ? ` · ${availability.label}` : ''
-  return `#${num} ${name}${tag}${returnTag}`
+  return `#${num} ${name}`
 }
 
 // Helper que compara si el jugador pertenece al equipo seleccionado (por ID o por Nombre)
@@ -1574,25 +1569,27 @@ const finishMatch = () => {
                 <section v-for="group in homeLineupGroups" :key="`home-${group.label}`" class="lineup-position-group">
                   <div class="text-caption text-weight-bold text-primary q-mb-xs">{{ group.label }}</div>
                   <div v-for="entry in group.players" :key="entry.playerId" class="lineup-player-row">
-                    <div class="lineup-player-copy">
-                      <span>{{ formatPlayerOption(entry.player) }}</span>
-                      <q-badge v-if="entry.availability.label" :color="entry.availability.type === 'injury' ? 'warning' : 'negative'">
-                        {{ entry.availability.label }}
-                      </q-badge>
+                    <div class="lineup-player-main">
+                      <div class="lineup-player-copy">
+                        <span>{{ formatPlayerOption(entry.player) }}</span>
+                      </div>
+                      <q-btn-toggle
+                        v-model="lineupForm.homeStatus[entry.playerId]"
+                        :options="lineupStatusOptions"
+                        dense
+                        no-caps
+                        spread
+                        unelevated
+                        color="grey-6"
+                        :toggle-color="getLineupToggleColor(entry.status)"
+                        toggle-text-color="white"
+                        :disable="!entry.availability.available"
+                        class="lineup-status-toggle"
+                      />
                     </div>
-                    <q-btn-toggle
-                      v-model="lineupForm.homeStatus[entry.playerId]"
-                      :options="lineupStatusOptions"
-                      dense
-                      no-caps
-                      spread
-                      unelevated
-                      color="grey-6"
-                      :toggle-color="getLineupToggleColor(entry.status)"
-                      toggle-text-color="white"
-                      :disable="!entry.availability.available"
-                      class="lineup-status-toggle"
-                    />
+                    <q-badge v-if="entry.availability.label" class="status-chip" :color="entry.availability.type === 'injury' ? 'warning' : 'negative'">
+                      {{ entry.availability.label }}
+                    </q-badge>
                   </div>
                 </section>
               </section>
@@ -1612,25 +1609,27 @@ const finishMatch = () => {
                 <section v-for="group in awayLineupGroups" :key="`away-${group.label}`" class="lineup-position-group">
                   <div class="text-caption text-weight-bold text-primary q-mb-xs">{{ group.label }}</div>
                   <div v-for="entry in group.players" :key="entry.playerId" class="lineup-player-row">
-                    <div class="lineup-player-copy">
-                      <span>{{ formatPlayerOption(entry.player) }}</span>
-                      <q-badge v-if="entry.availability.label" :color="entry.availability.type === 'injury' ? 'warning' : 'negative'">
-                        {{ entry.availability.label }}
-                      </q-badge>
+                    <div class="lineup-player-main">
+                      <div class="lineup-player-copy">
+                        <span>{{ formatPlayerOption(entry.player) }}</span>
+                      </div>
+                      <q-btn-toggle
+                        v-model="lineupForm.awayStatus[entry.playerId]"
+                        :options="lineupStatusOptions"
+                        dense
+                        no-caps
+                        spread
+                        unelevated
+                        color="grey-6"
+                        :toggle-color="getLineupToggleColor(entry.status)"
+                        toggle-text-color="white"
+                        :disable="!entry.availability.available"
+                        class="lineup-status-toggle"
+                      />
                     </div>
-                    <q-btn-toggle
-                      v-model="lineupForm.awayStatus[entry.playerId]"
-                      :options="lineupStatusOptions"
-                      dense
-                      no-caps
-                      spread
-                      unelevated
-                      color="grey-6"
-                      :toggle-color="getLineupToggleColor(entry.status)"
-                      toggle-text-color="white"
-                      :disable="!entry.availability.available"
-                      class="lineup-status-toggle"
-                    />
+                    <q-badge v-if="entry.availability.label" class="status-chip" :color="entry.availability.type === 'injury' ? 'warning' : 'negative'">
+                      {{ entry.availability.label }}
+                    </q-badge>
                   </div>
                 </section>
               </section>
@@ -2581,22 +2580,40 @@ const finishMatch = () => {
 }
 
 .lineup-player-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 8px 0;
+  border-top: 1px solid var(--tb-border);
+}
+
+.lineup-player-main {
   display: grid;
   grid-template-columns: minmax(100px, 1fr) minmax(0, 2fr);
   align-items: center;
   gap: 10px;
-  padding: 8px 0;
-  border-top: 1px solid var(--tb-border);
 }
 
 .lineup-player-copy {
   font-weight: 600;
   display: flex;
   flex-direction: column;
-  gap: 4px;
   min-width: 0;
   font-size: 0.82rem;
   overflow-wrap: anywhere;
+}
+
+.status-chip {
+  align-self: flex-start;
+  width: auto !important;
+  max-width: 100% !important;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  margin-top: 6px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 0.8rem;
 }
 
 .lineup-status-toggle {
@@ -2627,7 +2644,7 @@ const finishMatch = () => {
     grid-template-columns: 1fr;
   }
 
-  .lineup-player-row {
+  .lineup-player-main {
     grid-template-columns: minmax(90px, 1fr) minmax(0, 1.8fr);
     gap: 6px;
   }
