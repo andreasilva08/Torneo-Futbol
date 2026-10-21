@@ -306,7 +306,11 @@ export const useTournamentStore = defineStore('tournament', {
 
     async deleteMatch(matchId) {
       const deletedMatch = this.matches.find((match) => match._id === matchId) || this.matchDetail
-      if (normalizeMatchStatus(deletedMatch?.status) === 'FINISHED') {
+      const status = normalizeMatchStatus(deletedMatch?.status)
+      if (['IN_PROGRESS', 'LIVE', 'EN VIVO', 'INICIADO'].includes(status)) {
+        throw new Error('No se puede eliminar un partido en juego. Debes cambiar su estado a PROGRAMADO antes de eliminarlo.')
+      }
+      if (status === 'FINISHED') {
         throw new Error('Inmutabilidad de encuentros concluidos: Un partido con estado FINALIZADO no puede ser eliminado.')
       }
       await api.delete(`/matches/${matchId}`)

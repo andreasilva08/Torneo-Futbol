@@ -625,6 +625,13 @@ watch(() => matchEditForm.status, (status) => {
 })
 
 const confirmDeleteMatch = () => {
+  if (isMatchLive.value) {
+    $q.notify({
+      type: 'warning',
+      message: 'No se puede eliminar un partido en juego. Debes cambiar su estado a PROGRAMADO antes de eliminarlo.',
+    })
+    return
+  }
   if (!match.value || deletingMatch.value || isFinished.value) {
     if (isFinished.value) {
       $q.notify({

@@ -139,7 +139,13 @@ const form = reactive({
 
 const teamFilterOptions = computed(() => [
   { label: '🛡 Todos los equipos', value: 'ALL' },
-  ...store.teams.map((team) => ({
+  ...[...store.teams]
+    .sort((a, b) => String(a.name || a.nombre || '').localeCompare(
+      String(b.name || b.nombre || ''),
+      'es',
+      { sensitivity: 'base' },
+    ))
+    .map((team) => ({
     label: `🛡 ${team.name}`,
     value: team._id,
   })),
@@ -263,6 +269,22 @@ const getTeamId = (player) => {
   return String(rawTeam)
 }
 
+const getCanonicalTeamId = (teamValue) => {
+  const rawValue = String(
+    teamValue && typeof teamValue === 'object'
+      ? teamValue._id || teamValue.id || ''
+      : teamValue || '',
+  ).trim()
+  if (!rawValue) return ''
+
+  const normalizedValue = rawValue.toLowerCase()
+  const team = store.teams.find((item) => (
+    String(item._id || item.id || '') === rawValue ||
+    String(item.name || item.nombre || '').trim().toLowerCase() === normalizedValue
+  ))
+  return String(team?._id || team?.id || rawValue)
+}
+
 const getPlayerTeam = (player) => {
   const playerTeam = player.team
   const teamId = player.teamId || (
@@ -337,21 +359,17 @@ const saveInlineEdit = async (player) => {
   }
 
   // Validar si el dorsal ya está ocupado por otro jugador en el mismo club
-  const targetTeamId = String(inlineForm.team)
+  const targetTeamId = getCanonicalTeamId(inlineForm.team)
   const isDorsalTaken = store.players.some((p) => {
-    if (String(p._id) === String(player._id)) return false
-    const pTeamId = getTeamId(p)
-    if (pTeamId && String(pTeamId) === targetTeamId) {
-      const num = Number(p.number ?? p.dorsal)
-      return num === newNum
-    }
-    return false
+    if (String(p._id || p.id) === String(player._id || player.id)) return false
+    const playerTeamId = getCanonicalTeamId(getPlayerTeam(p) || getTeamId(p))
+    return playerTeamId === targetTeamId && Number(p.number ?? p.dorsal) === newNum
   })
 
   if (isDorsalTaken) {
     $q.notify({
       type: 'negative',
-      message: `El dorsal #${newNum} ya pertenece a otro jugador de este equipo.`
+      message: `El dorsal ${newNum} ya pertenece a otro jugador de este equipo`,
     })
     return
   }
@@ -986,36 +1004,33 @@ onMounted(async () => {
       >
         <q-card flat class="player-card sports-panel-card">
           <!-- TOP BAR: DORSAL Y ESCUDO DE CLUB -->
-          <div class="player-card__top row items-center justify-between q-pa-md">
-            <span class="dorsal-blue-box text-weight-bolder">
+          <div class="player-card__top">
+            <span class="dorsal-blue-box text-weight-bolder player-card__number">
               #{{ player.number ?? player.dorsal ?? '-' }}
             </span>
+            <div class="sport-crest-container player-card__avatar shadow-2">
+              <img
+                :src="player?.photoUrl || player?.foto_url || player?.photo || '/images/default-avatar.svg'"
+                :alt="`Foto de ${player.name || player.nombre}`"
+                class="player-avatar-image"
+                @error="(e) => e.target.src = '/images/default-avatar.svg'"
+              />
+            </div>
             <div
               class="sport-crest-container player-card__crest"
               :title="getPlayerTeamName(player)"
               @click="goToPlayerTeam(player)"
-              style="cursor: pointer;"
             >
-              <ImagePreview
-                :src="getPlayerTeamLogo(player)"
-                :fallback="getDefaultTeamLogo(getPlayerTeam(player) || player)"
+              <img
+                :src="getPlayerTeam(player)?.logoUrl || getPlayerTeam(player)?.escudo_url || getPlayerTeam(player)?.logo || getDefaultTeamLogo(getPlayerTeam(player))"
                 :alt="`Escudo de ${getPlayerTeamName(player)}`"
-                width="28px"
-                height="28px"
+                class="player-card__crest-image"
+                @error="(e) => e.target.src = getDefaultTeamLogo(getPlayerTeam(player))"
               />
             </div>
           </div>
 
-          <!-- AVATAR CENTRAL UNIFICADO -->
-          <div class="player-card__avatar-wrap text-center q-pt-sm q-pb-md">
-            <div class="sport-crest-container player-card__avatar shadow-2 q-mx-auto">
-              <img
-                :src="player.photoUrl || player.foto_url || '/images/default-avatar.svg'"
-                :alt="`Avatar de ${player.name || player.nombre}`"
-                class="player-avatar-image"
-                @error="handlePlayerAvatarError"
-              />
-            </div>
+          <div class="player-card__avatar-wrap text-center q-pb-md">
             <div class="player-card__name text-subtitle1 text-weight-bold text-white q-mt-sm">
               {{ player.name || player.nombre }}
             </div>
@@ -1025,7 +1040,7 @@ onMounted(async () => {
           </div>
 
           <!-- BADGES: POSICIÓN Y CONDICIÓN -->
-          <div class="player-card__meta row items-center justify-center gap-xs q-px-md q-pb-md">
+          <div class="player-card__meta row items-center justify-center q-px-md q-pb-md">
             <div class="position-neon-tag">
               <q-icon :name="positionIcon(player.position || player.posicion)" size="14px" class="q-mr-xs" />
               <span>{{ player.position || player.posicion }}</span>
@@ -1402,6 +1417,7 @@ onMounted(async () => {
 }
 
 .player-name-bold {
+  margin-left: 8px;
   font-size: 0.95rem;
   font-weight: 800;
   color: #ffffff;
@@ -1685,9 +1701,25 @@ onMounted(async () => {
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
 }
 
+.player-card__top {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+  width: 100%;
+  padding: 0 8px;
+  box-sizing: border-box;
+}
+
+.player-card__number {
+  flex: 0 0 36px;
+  text-align: center;
+}
+
 .player-card__avatar {
-  width: 72px;
-  height: 72px;
+  width: 112px;
+  height: 112px;
   border-radius: 50%;
   border: 2px solid var(--tb-border);
   display: flex;
@@ -1701,6 +1733,29 @@ onMounted(async () => {
   height: 100% !important;
   border-radius: 50%;
   object-fit: cover !important;
+}
+
+.player-card__crest {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  border: 1px solid var(--tb-border);
+  cursor: pointer;
+}
+
+.player-card__crest-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.player-card__meta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 12px;
 }
 
 .border-top-dark {

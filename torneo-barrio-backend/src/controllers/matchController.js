@@ -622,7 +622,14 @@ const deleteMatch = async (req, res) => {
             return res.status(404).json({ message: 'Partido no encontrado' });
         }
 
-        if (String(match.status).toUpperCase() === 'FINISHED') {
+        const status = String(match.status || '').trim().toUpperCase();
+        if (['IN_PROGRESS', 'LIVE', 'EN VIVO', 'INICIADO'].includes(status)) {
+            return res.status(409).json({
+                message: 'No se puede eliminar un partido en juego. Debes cambiar su estado a PROGRAMADO antes de eliminarlo.',
+            });
+        }
+
+        if (status === 'FINISHED') {
             return res.status(409).json({
                 message: 'Inmutabilidad de encuentros concluidos: Un partido con estado FINALIZADO no puede ser eliminado para proteger los registros históricos y la tabla de clasificación.',
             });
