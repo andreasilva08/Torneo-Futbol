@@ -1,12 +1,19 @@
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useQuasar } from 'quasar'
 import { useTournamentStore } from '@/stores/tournament'
 import ImagePreview from '@/components/ImagePreview.vue'
 import { getDefaultTeamLogo } from '@/utils/defaultAssets'
+import { downloadElementAsPng } from '@/utils/downloadElementAsPng'
+import { exportStandingsExcel } from '@/utils/exportTournamentExcel'
 
 const store = useTournamentStore()
 const router = useRouter()
+const $q = useQuasar()
+const standingsExportRef = ref(null)
+const exportingPng = ref(false)
+const exportingExcel = ref(false)
 
 const totalTeams = computed(() => store.standings.length)
 
@@ -27,6 +34,44 @@ const goalDiffClass = (value) => {
 
 const getTeamNeighborhood = (row) => {
   return row.neighborhood || row.barrio || ''
+}
+
+const handleExportExcel = async () => {
+  exportingExcel.value = true
+  try {
+    await exportStandingsExcel(store, 'torneo-barrio-tabla-de-posiciones.xlsx')
+    $q.notify({
+      type: 'positive',
+      message: 'Tabla de Posiciones exportada a Excel (.xlsx) exitosamente.',
+    })
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: error.message || 'Error al exportar la tabla a Excel.',
+    })
+  } finally {
+    exportingExcel.value = false
+  }
+}
+
+const downloadStandingsPng = async () => {
+  const exportElement = standingsExportRef.value?.$el || standingsExportRef.value
+  if (!exportElement) return
+  exportingPng.value = true
+  try {
+    await downloadElementAsPng(exportElement, 'tabla-de-posiciones.png')
+    $q.notify({
+      type: 'positive',
+      message: 'Tabla de Posiciones descargada en imagen PNG.',
+    })
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: error.message || 'No se pudo exportar la tabla en imagen.',
+    })
+  } finally {
+    exportingPng.value = false
+  }
 }
 
 const getMovement = (row) => {
@@ -80,7 +125,25 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="row items-center q-gutter-sm">
+      <div class="row items-center q-gutter-sm flex-wrap">
+        <q-btn
+          outline
+          color="secondary"
+          icon="image"
+          label="Descargar Tabla en Imagen (PNG)"
+          :loading="exportingPng"
+          :disable="!store.standings.length"
+          @click="downloadStandingsPng"
+        />
+        <q-btn
+          outline
+          color="primary"
+          icon="table_view"
+          label="Exportar Excel (.xlsx)"
+          :loading="exportingExcel"
+          :disable="!store.standings.length"
+          @click="handleExportExcel"
+        />
         <q-badge color="primary" class="q-px-sm q-py-xs text-weight-bolder" style="font-size: 1rem; 
           border-radius: 8px; 
           padding: 12px 14px; 
@@ -90,188 +153,188 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- MAIN STANDINGS CARD -->
-    <q-card flat class="standings-card">
-      <q-card-section class="q-pa-lg">
-        <div class="row items-center justify-between q-mb-md">
-          <div class="row items-center gap-sm">
-            <q-icon name="military_tech" color="accent" size="22px" />
-            <div class="text-subtitle1 text-weight-bold text-white">Clasificación General</div>
+    <!-- CONTENEDOR EXCLUSIVO PARA EXPORTACIÓN ESTATAL DE LA TABLA DE POSICIONES -->
+    <div ref="standingsExportRef" class="standings-export-surface">
+      <!-- MAIN STANDINGS CARD (ÚNICAMENTE CLASIFICACIÓN GENERAL) -->
+      <q-card flat class="standings-card">
+        <q-card-section class="q-pa-lg">
+          <div class="row items-center justify-between q-mb-md">
+            <div class="row items-center gap-sm">
+              <q-icon name="military_tech" color="accent" size="22px" />
+              <div class="text-subtitle1 text-weight-bold text-white" style="font-size: 1.2rem;">Clasificación General</div>
+            </div>
+            <div class="text-caption text-grey-5" style="font-size: 1rem;">
+              Puntos: Victoria = 3 pts · Empate = 1 pt · Derrota = 0 pts
+            </div>
           </div>
-          <div class="text-caption text-grey-5">
-            Puntos: Victoria = 3 pts · Empate = 1 pt · Derrota = 0 pts
-          </div>
-        </div>
 
-        <!-- STANDINGS TABLE -->
-        <q-table
-          :rows="store.standings"
-          :columns="[
-            { name: 'position', label: 'POS', field: 'position', align: 'center' },
-            { name: 'team', label: 'EQUIPO', field: 'name', align: 'left' },
-            { name: 'played', label: 'PJ', field: 'played', align: 'center' },
-            { name: 'wins', label: 'PG', field: 'wins', align: 'center' },
-            { name: 'draws', label: 'PE', field: 'draws', align: 'center' },
-            { name: 'losses', label: 'PP', field: 'losses', align: 'center' },
-            { name: 'goalsFor', label: 'GF', field: 'goalsFor', align: 'center' },
-            { name: 'goalsAgainst', label: 'GC', field: 'goalsAgainst', align: 'center' },
-            { name: 'goalDifference', label: 'DG', field: 'goalDifference', align: 'center' },
-            { name: 'points', label: 'PUNTOS', field: 'points', align: 'center' },
-          ]"
-          row-key="_id"
-          flat
-          hide-pagination
-          :pagination="{ rowsPerPage: 0 }"
-          class="standings-sports-table"
-        >
-          <!-- POSITION CELL CON MOVIMIENTO DETALLADO (ASCENSO, DESCENSO, MANTENIDO) -->
-          <template #body-cell-position="props">
-            <q-td :props="props" class="text-center">
-              <div class="row items-center justify-center no-wrap gap-xs">
-                <span :class="positionStyles(props.row.position)">{{ props.row.position }}</span>
-                <span
-                  class="movement-indicator"
-                  :class="`movement-indicator--${getMovement(props.row).toLowerCase()}`"
-                  :title="getMovementTooltip(props.row)"
+          <!-- STANDINGS TABLE -->
+          <q-table
+            :rows="store.standings"
+            :columns="[
+              { name: 'position', label: 'POS', field: 'position', align: 'center' },
+              { name: 'team', label: 'EQUIPO', field: 'name', align: 'left' },
+              { name: 'played', label: 'PJ', field: 'played', align: 'center' },
+              { name: 'wins', label: 'PG', field: 'wins', align: 'center' },
+              { name: 'draws', label: 'PE', field: 'draws', align: 'center' },
+              { name: 'losses', label: 'PP', field: 'losses', align: 'center' },
+              { name: 'goalsFor', label: 'GF', field: 'goalsFor', align: 'center' },
+              { name: 'goalsAgainst', label: 'GC', field: 'goalsAgainst', align: 'center' },
+              { name: 'goalDifference', label: 'DG', field: 'goalDifference', align: 'center' },
+              { name: 'points', label: 'PUNTOS', field: 'points', align: 'center' },
+            ]"
+            row-key="_id"
+            flat
+            hide-pagination
+            :pagination="{ rowsPerPage: 0 }"
+            class="standings-sports-table"
+          >
+            <!-- POSITION CELL CON MOVIMIENTO DETALLADO (ASCENSO, DESCENSO, MANTENIDO) -->
+            <template #body-cell-position="props">
+              <q-td :props="props" class="text-center">
+                <div class="row items-center justify-center no-wrap gap-xs">
+                  <span :class="positionStyles(props.row.position)">{{ props.row.position }}</span>
+                  <span
+                    class="movement-indicator"
+                    :class="`movement-indicator--${getMovement(props.row).toLowerCase()}`"
+                    :title="getMovementTooltip(props.row)"
+                  >
+                    <span v-if="getMovement(props.row) === 'UP'" class="movement-arrow movement-arrow--up" style="padding-left: 20px;margin-left: 20px;">▲</span>
+                    <span v-else-if="getMovement(props.row) === 'DOWN'" class="movement-arrow movement-arrow--down" style="padding-left: 20px;margin-left: 20px;">▼</span>
+                    <span v-else class="movement-arrow movement-arrow--same" style="padding-left: 20px;margin-left: 20px;">▬</span>
+                  </span>
+                </div>
+              </q-td>
+            </template>
+
+            <!-- TEAM CELL INTERACTIVO (ESCUDO + NOMBRE DE CLUB) -->
+            <template #body-cell-team="props">
+              <q-td :props="props">
+                <div
+                  class="row items-center no-wrap gap-md standings-team-row cursor-pointer"
+                  @click="goToTeamDetail(props.row._id)"
+                  :title="`Ver plantel oficial de ${props.row.name || props.row.nombre}`"
                 >
-                  <span v-if="getMovement(props.row) === 'UP'" class="movement-arrow movement-arrow--up" style="padding-left: 20px;margin-left: 20px;">▲</span>
-                  <span v-else-if="getMovement(props.row) === 'DOWN'" class="movement-arrow movement-arrow--down" style="padding-left: 20px;margin-left: 20px;">▼</span>
-                  <span v-else class="movement-arrow movement-arrow--same" style="padding-left: 20px;margin-left: 20px;">▬</span>
+                  <div class="sport-crest-container standings-crest-box">
+                    <ImagePreview
+                      :src="props.row.logoUrl || props.row.escudo_url || props.row.logo || getDefaultTeamLogo(props.row)"
+                      :fallback="getDefaultTeamLogo(props.row)"
+                      :alt="`Escudo de ${props.row.name || props.row.nombre || 'equipo'}`"
+                      width="36px"
+                      height="36px"
+                    />
+                  </div>
+                  <div>
+                    <div class="standings-team-name standings-team-name--interactive">
+                      {{ props.row.name || props.row.nombre }}
+                      <q-icon name="open_in_new" size="13px" class="q-ml-xs hover-icon" />
+                    </div>
+                    <div v-if="getTeamNeighborhood(props.row)" class="standings-team-subtext">
+                      {{ getTeamNeighborhood(props.row) }}
+                    </div>
+                  </div>
+                </div>
+              </q-td>
+            </template>
+
+            <!-- STATS CELLS (PJ, PG, PE, PP, GF, GC) -->
+            <template #body-cell-played="props">
+              <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 1rem;">
+                {{ props.row.played }}
+              </q-td>
+            </template>
+            <template #body-cell-wins="props">
+              <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 1rem;">
+                {{ props.row.wins }}
+              </q-td>
+            </template>
+            <template #body-cell-draws="props">
+              <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 1rem;">
+                {{ props.row.draws }}
+              </q-td>
+            </template>
+            <template #body-cell-losses="props">
+              <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 1rem;">
+                {{ props.row.losses }}
+              </q-td>
+            </template>
+            <template #body-cell-goalsFor="props">
+              <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 1rem;">
+                {{ props.row.goalsFor }}
+              </q-td>
+            </template>
+            <template #body-cell-goalsAgainst="props">
+              <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 1rem;">
+                {{ props.row.goalsAgainst }}
+              </q-td>
+            </template>
+
+            <!-- DG (GOAL DIFFERENCE) -->
+            <template #body-cell-goalDifference="props">
+              <q-td :props="props" class="text-center">
+                <span :class="goalDiffClass(props.row.goalDifference)">
+                  [{{ props.row.goalDifference > 0 ? '+' : '' }}{{ props.row.goalDifference }}]
                 </span>
-              </div>
-            </q-td>
-          </template>
+              </q-td>
+            </template>
 
-          <!-- TEAM CELL INTERACTIVO (CLIC EN NOMBRE O ESCUDO -> PLANTEL DEL EQUIPO) -->
-          <template #body-cell-team="props">
-            <q-td :props="props">
-              <div
-                class="row items-center no-wrap gap-md standings-team-row cursor-pointer"
-                @click="goToTeamDetail(props.row._id)"
-                :title="`Ver plantel oficial de ${props.row.name || props.row.nombre}`"
-              >
-                <div class="sport-crest-container standings-crest-box">
-                  <ImagePreview
-                    :src="props.row.logoUrl || props.row.escudo_url"
-                    :fallback="getDefaultTeamLogo(props.row)"
-                    :alt="`Escudo de ${props.row.name || props.row.nombre || 'equipo'}`"
-                    width="36px"
-                    height="36px"
-                  />
+            <!-- POINTS CELL (PUNTOS) -->
+            <template #body-cell-points="props">
+              <q-td :props="props" class="text-center">
+                <span class="pts-badge">
+                  {{ props.row.points }} <small>PTS</small>
+                </span>
+              </q-td>
+            </template>
+          </q-table>
+
+          <div v-if="!store.standings.length" class="text-grey-5 q-mt-lg text-center q-pa-lg">
+            Aún no hay datos suficientes de partidos disputados para calcular la tabla.
+          </div>
+
+          <!-- LEYENDA EXPLICATIVA CON COLORES DE ZONA Y MOVIMIENTO (FOOTER) -->
+          <div class="standings-footer q-mt-lg q-pt-md">
+            <div class="row items-center justify-between q-col-gutter-md">
+              <div class="row items-center gap-md flex-wrap">
+                <div class="row items-center gap-xs text-caption">
+                  <span class="legend-dot legend-dot--champion" style="margin-right: 10px;"></span>
+                  <span class="text-weight-bold text-white" style="padding-left: 10px;">1º:</span>
+                  <span class="text-grey-4">Zona de Campeón</span>
                 </div>
-                <div>
-                  <div class="standings-team-name standings-team-name--interactive">
-                    {{ props.row.name || props.row.nombre }}
-                    <q-icon name="open_in_new" size="13px" class="q-ml-xs hover-icon" />
-                  </div>
-                  <div v-if="getTeamNeighborhood(props.row)" class="standings-team-subtext">
-                    {{ getTeamNeighborhood(props.row) }}
-                  </div>
+                <div class="row items-center gap-xs text-caption">
+                  <span class="legend-dot legend-dot--playoff" style="margin-left: 10px;"></span>
+                  <span class="text-weight-bold text-white" style="padding-left: 10px;">2º - 4º:</span>
+                  <span class="text-grey-4">Zona de Liguilla</span>
                 </div>
               </div>
-            </q-td>
-          </template>
 
-          <!-- STATS CELLS (PJ, PG, PE, PP, GF, GC) -->
-          <template #body-cell-played="props">
-            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 1rem;">
-              {{ props.row.played }}
-            </q-td>
-          </template>
-          <template #body-cell-wins="props">
-            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 1rem;">
-              {{ props.row.wins }}
-            </q-td>
-          </template>
-          <template #body-cell-draws="props">
-            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 1rem;">
-              {{ props.row.draws }}
-            </q-td>
-          </template>
-          <template #body-cell-losses="props">
-            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 1rem;">
-              {{ props.row.losses }}
-            </q-td>
-          </template>
-          <template #body-cell-goalsFor="props">
-            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 1rem;">
-              {{ props.row.goalsFor }}
-            </q-td>
-          </template>
-          <template #body-cell-goalsAgainst="props">
-            <q-td :props="props" class="text-center text-weight-bold text-slate-200" style="font-size: 1rem;">
-              {{ props.row.goalsAgainst }}
-            </q-td>
-          </template>
-
-          <!-- DG (GOAL DIFFERENCE) -->
-          <template #body-cell-goalDifference="props">
-            <q-td :props="props" class="text-center">
-              <span :class="goalDiffClass(props.row.goalDifference)">
-                [{{ props.row.goalDifference > 0 ? '+' : '' }}{{ props.row.goalDifference }}]
-              </span>
-            </q-td>
-          </template>
-
-          <!-- POINTS CELL (PUNTOS) -->
-          <template #body-cell-points="props">
-            <q-td :props="props" class="text-center">
-              <span class="pts-badge">
-                {{ props.row.points }} <small>PTS</small>
-              </span>
-            </q-td>
-          </template>
-        </q-table>
-
-        <div v-if="!store.standings.length" class="text-grey-5 q-mt-lg text-center q-pa-lg">
-          Aún no hay datos suficientes de partidos disputados para calcular la tabla.
-        </div>
-
-        <!-- LEYENDA EXPLICATIVA CON COLORES DE ZONA Y MOVIMIENTO (FOOTER) -->
-        <div class="standings-footer q-mt-lg q-pt-md">
-          <div class="row items-center justify-between q-col-gutter-md">
-            <!-- COLORES DE ZONA DE LA TABLA -->
-            <div class="row items-center gap-md flex-wrap">
-              <div class="row items-center gap-xs text-caption">
-                <span class="legend-dot legend-dot--champion" style="margin-right: 10px;"></span>
-                <span class="text-weight-bold text-white" style="padding-left: 10px;">1º:</span>
-                <span class="text-grey-4">Zona de Campeón</span>
-              </div>
-              <div class="row items-center gap-xs text-caption">
-                <span class="legend-dot legend-dot--playoff" style="margin-left: 10px;"></span>
-                <span class="text-weight-bold text-white" style="padding-left: 10px;">2º - 4º:</span>
-                <span class="text-grey-4">Zona de Liguilla</span>
+              <div class="row items-center gap-md flex-wrap">
+                <div class="row items-center gap-xs text-caption">
+                  <span class="movement-legend-icon movement-arrow--up" style="margin-left: 10px;">▲</span>
+                  <span class="text-grey-4">Sube posición</span>
+                </div>
+                <div class="row items-center gap-xs text-caption">
+                  <span class="movement-legend-icon movement-arrow--down" style="margin-left: 10px;">▼</span>
+                  <span class="text-grey-4">Baja posición</span>
+                </div>
+                <div class="row items-center gap-xs text-caption">
+                  <span class="movement-legend-icon movement-arrow--same" style="margin-left: 10px;">▬</span>
+                  <span class="text-grey-4">Mantiene posición</span>
+                </div>
               </div>
             </div>
 
-            <!-- MOVIMIENTO EN LA TABLA RESPECTO A JORNADA ANTERIOR -->
-            <div class="row items-center gap-md flex-wrap">
-              <div class="row items-center gap-xs text-caption">
-                <span class="movement-legend-icon movement-arrow--up" style="margin-left: 10px;">▲</span>
-                <span class="text-grey-4">Sube posición</span>
-              </div>
-              <div class="row items-center gap-xs text-caption">
-                <span class="movement-legend-icon movement-arrow--down" style="margin-left: 10px;">▼</span>
-                <span class="text-grey-4">Baja posición</span>
-              </div>
-              <div class="row items-center gap-xs text-caption">
-                <span class="movement-legend-icon movement-arrow--same" style="margin-left: 10px;">▬</span>
-                <span class="text-grey-4">Mantiene posición</span>
-              </div>
+            <div class="text-caption text-grey-5 text-center q-mt-md standings-tiebreaker">
+              Criterio de desempate: Puntos → Diferencia de Gol → Goles a Favor → Enfrentamiento Directo
             </div>
           </div>
-
-          <div class="text-caption text-grey-5 text-center q-mt-md standings-tiebreaker">
-            Criterio de desempate: Puntos → Diferencia de Gol → Goles a Favor → Enfrentamiento Directo
-          </div>
-        </div>
-      </q-card-section>
-    </q-card>
+        </q-card-section>
+      </q-card>
+    </div>
   </div>
 </template>
 
 <style scoped>
-
 .standings-page {
   animation: fadeIn 0.3s ease;
 }
@@ -286,6 +349,46 @@ onMounted(async () => {
   border: 1px solid var(--tb-border) !important;
   border-radius: var(--tb-radius-md) !important;
   overflow: hidden;
+}
+
+.standings-export-surface {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 16px;
+  background: #0b111e;
+  border-radius: var(--tb-radius-md);
+}
+
+.export-official-banner {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.98) 100%);
+  border: 1px solid var(--tb-border);
+  border-radius: var(--tb-radius-md);
+}
+
+.export-official-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(234, 179, 8, 0.15);
+  border: 1px solid rgba(234, 179, 8, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.export-banner-eyebrow {
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #10b981;
+}
+
+.export-banner-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.01em;
 }
 
 .standings-sports-table {

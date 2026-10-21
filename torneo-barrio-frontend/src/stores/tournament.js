@@ -295,7 +295,11 @@ export const useTournamentStore = defineStore('tournament', {
       const previousMatch = this.matches.find((match) => match._id === matchId) || this.matchDetail
       const previousStatus = normalizeMatchStatus(previousMatch?.status)
       const { data } = await api.put(`/matches/${matchId}`, payload)
-      const updated = normalizeMatch(data)
+      const updated = normalizeMatch({
+        ...previousMatch,
+        ...data,
+        ...(payload.status ? { status: payload.status } : {}),
+      })
       this.matchDetail = updated
       this.matches = this.matches.map((match) => (match._id === matchId ? { ...match, ...updated } : match))
       if (previousStatus === 'FINISHED' || updated.status === 'FINISHED') {
@@ -321,17 +325,22 @@ export const useTournamentStore = defineStore('tournament', {
     async updateMatchResult(matchId, payload) {
       const previousMatch = this.matches.find((match) => match._id === matchId) || this.matchDetail
       const previousStatus = normalizeMatchStatus(previousMatch?.status)
-      const { data } = await api.put(`/matches/${matchId}/result`, payload)
-      const updated = normalizeMatch({
-        ...data,
-        events: this.matchDetail?.events || data.events || [],
-      })
-      this.matchDetail = updated
-      this.matches = this.matches.map((match) => (match._id === matchId ? { ...match, ...updated } : match))
-      if (previousStatus === 'FINISHED' || updated.status === 'FINISHED') {
-        await this.fetchStandings()
+      try {
+        const { data } = await api.put(`/matches/${matchId}/result`, payload)
+        const updated = normalizeMatch({
+          ...data,
+          events: this.matchDetail?.events || data.events || [],
+        })
+        this.matchDetail = updated
+        this.matches = this.matches.map((match) => (match._id === matchId ? { ...match, ...updated } : match))
+        if (previousStatus === 'FINISHED' || updated.status === 'FINISHED') {
+          await this.fetchStandings()
+        }
+        return updated
+      } catch (error) {
+        console.error('Detalle del error 400 Backend:', error.response?.data)
+        throw error
       }
-      return updated
     },
 
     async updateMatchEvents(matchId, events) {

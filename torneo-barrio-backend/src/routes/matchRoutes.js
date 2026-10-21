@@ -18,6 +18,7 @@ router.route('/')
 .post(createMatch);
 
 router.route('/:id/result')
+.get(getMatchById)
 .put(updateMatchResult);
 
 router.route('/:id/events')

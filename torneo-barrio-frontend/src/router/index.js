@@ -49,6 +49,7 @@ const routes = [
     path: '/tabla',
     name: 'standings',
     component: StandingsView,
+    alias: '/estadisticas',
   },
   {
     path: '/goleadores',

@@ -1,12 +1,52 @@
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import { useQuasar } from 'quasar'
 import { useTournamentStore } from '@/stores/tournament'
+import ImagePreview from '@/components/ImagePreview.vue'
+import { getDefaultTeamLogo } from '@/utils/defaultAssets'
+import { downloadElementAsPng } from '@/utils/downloadElementAsPng'
+import { exportTournamentExcel } from '@/utils/exportTournamentExcel'
 
 const store = useTournamentStore()
+const $q = useQuasar()
+const exportRef = ref(null)
+const exportingPng = ref(false)
+const exportingExcel = ref(false)
+
+const handleExportExcel = async () => {
+  exportingExcel.value = true
+  try {
+    await exportTournamentExcel(store, 'torneo-barrio-porteros.xlsx')
+    $q.notify({ type: 'positive', message: 'Archivo Excel (.xlsx) exportado exitosamente.' })
+  } catch (error) {
+    $q.notify({ type: 'negative', message: error.message || 'Error al exportar a Excel.' })
+  } finally {
+    exportingExcel.value = false
+  }
+}
+
+const downloadPng = async () => {
+  const exportElement = exportRef.value?.$el || exportRef.value
+  if (!exportElement) return
+  exportingPng.value = true
+  try {
+    await downloadElementAsPng(exportElement, 'tabla-valla-menos-vencida.png')
+    $q.notify({ type: 'positive', message: 'Imagen PNG descargada con éxito.' })
+  } catch (error) {
+    $q.notify({ type: 'negative', message: error.message || 'Error al descargar la imagen.' })
+  } finally {
+    exportingPng.value = false
+  }
+}
 
 onMounted(async () => {
-  await store.fetchGoalkeepersStats()
+  await Promise.all([
+    store.fetchGoalkeepersStats(),
+    store.fetchStandings(),
+    store.fetchTopScorers(),
+    store.fetchTopAssists(),
+  ])
 })
 </script>
 
@@ -22,6 +62,26 @@ onMounted(async () => {
           <div class="sport-page-header__eyebrow">ESTADÍSTICAS DEFENSIVAS · TEMPORADA 2026</div>
           <h1 class="sport-page-header__title">Valla Menos Vencida</h1>
         </div>
+      </div>
+
+      <div class="row items-center q-gutter-sm flex-wrap">
+        <q-btn
+          outline
+          color="secondary"
+          icon="image"
+          label="Descargar Tabla en Imagen (PNG)"
+          :loading="exportingPng"
+          :disable="!store.goalkeepers.length"
+          @click="downloadPng"
+        />
+        <q-btn
+          outline
+          color="primary"
+          icon="table_view"
+          label="Exportar Excel (.xlsx)"
+          :loading="exportingExcel"
+          @click="handleExportExcel"
+        />
       </div>
     </div>
 
@@ -39,6 +99,7 @@ onMounted(async () => {
     </div>
 
     <!-- FULL GOALKEEPERS TABLE -->
+    <div ref="exportRef" class="stats-export-surface">
     <q-card flat class="sports-panel-card">
       <q-card-section class="q-pa-lg">
         <div class="row items-center justify-between q-mb-md">
@@ -50,6 +111,7 @@ onMounted(async () => {
           :rows="store.goalkeepers"
           :columns="[
             { name: 'position', label: 'POS', field: 'position', align: 'center' },
+            { name: 'goalkeepers', label: 'ARQUERO(S)', field: (row) => row.goalkeepers?.map((keeper) => keeper.player).join(', '), align: 'left' },
             { name: 'team', label: 'EQUIPO', field: 'team', align: 'left' },
             { name: 'matches', label: 'PJ', field: 'matches', align: 'center' },
             { name: 'goalsAgainst', label: 'GOLES RECIBIDOS', field: 'goalsAgainst', align: 'center' },
@@ -76,10 +138,41 @@ onMounted(async () => {
             </q-td>
           </template>
 
+          <template #body-cell-goalkeepers="props">
+            <q-td :props="props">
+              <div v-if="props.row.goalkeepers?.length" class="goalkeeper-list">
+                <div v-for="goalkeeper in props.row.goalkeepers" :key="goalkeeper.playerId" class="stats-person-cell">
+                  <div class="sport-crest-container stats-person-avatar">
+                    <ImagePreview
+                      :src="goalkeeper.photoUrl || '/images/default-avatar.svg'"
+                      fallback="/images/default-avatar.svg"
+                      :alt="`Foto de ${goalkeeper.player}`"
+                      width="30px"
+                      height="30px"
+                    />
+                  </div>
+                  <span>{{ goalkeeper.player }}</span>
+                </div>
+              </div>
+              <span v-else class="text-grey-5">Sin portero registrado</span>
+            </q-td>
+          </template>
+
           <!-- TEAM -->
           <template #body-cell-team="props">
             <q-td :props="props">
-              <span class="text-weight-bold text-white">{{ props.row.team }}</span>
+              <div class="stats-person-cell">
+                <div class="sport-crest-container stats-team-crest">
+                  <ImagePreview
+                    :src="props.row.logoUrl || getDefaultTeamLogo({ _id: props.row.teamId, name: props.row.team })"
+                    :fallback="getDefaultTeamLogo({ _id: props.row.teamId, name: props.row.team })"
+                    :alt="`Escudo de ${props.row.team}`"
+                    width="24px"
+                    height="24px"
+                  />
+                </div>
+                <span class="text-weight-bold text-white">{{ props.row.team }}</span>
+              </div>
             </q-td>
           </template>
 
@@ -114,12 +207,19 @@ onMounted(async () => {
         </div>
       </q-card-section>
     </q-card>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .stats-page {
   animation: fadeIn 0.3s ease;
+}
+
+.stats-export-surface {
+  padding: 8px;
+  background: #0b111e;
+  border-radius: var(--tb-radius-md);
 }
 
 @keyframes fadeIn {
@@ -189,6 +289,31 @@ onMounted(async () => {
 
 .stats-sports-table :deep(tbody tr:hover) {
   background: rgba(16, 185, 129, 0.08) !important;
+}
+
+.stats-person-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.stats-person-avatar {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+}
+
+.stats-team-crest {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+}
+
+.goalkeeper-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .rank-circle {

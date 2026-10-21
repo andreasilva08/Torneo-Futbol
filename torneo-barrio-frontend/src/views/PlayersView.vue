@@ -124,6 +124,33 @@ const getCondicionMeta = (val) => {
   }
 }
 
+const getPlayerReturnLabel = (player) => {
+  const status = String(player.status || player.condicion || '').trim().toUpperCase()
+  if (status === 'LESIONADO') {
+    if (!player.recoveryDate) return 'Retorno pendiente'
+    const recoveryDate = new Date(player.recoveryDate)
+    return Number.isNaN(recoveryDate.getTime())
+      ? 'Retorno pendiente'
+      : `Retorno estimado ${new Intl.DateTimeFormat('es').format(recoveryDate)}`
+  }
+  if (status.startsWith('SANCIONADO')) {
+    if (player.suspensionReturnDate) {
+      const returnDate = new Date(player.suspensionReturnDate)
+      if (!Number.isNaN(returnDate.getTime())) {
+        return `Retorno estimado ${new Intl.DateTimeFormat('es').format(returnDate)}`
+      }
+    }
+    if (player.suspendedUntilMatchday !== null &&
+      player.suspendedUntilMatchday !== undefined &&
+      player.suspendedUntilMatchday !== '' &&
+      Number.isFinite(Number(player.suspendedUntilMatchday))) {
+      return `Habilitado desde J${Number(player.suspendedUntilMatchday) + 1}`
+    }
+    return 'Retorno pendiente'
+  }
+  return ''
+}
+
 const form = reactive({
   name: '',
   number: null,
@@ -175,10 +202,18 @@ const positionIcon = (position) => {
   return 'settings'
 }
 
-const teamOptions = computed(() => store.teams.map((team) => ({
-  label: team.name,
-  value: team._id,
-  logoUrl: team.logoUrl || '/images/default-team.svg',
+const teamsOptions = computed(() => [...store.teams].sort((first, second) => (
+  String(first.name || first.nombre || '').localeCompare(
+    String(second.name || second.nombre || ''),
+    'es',
+    { sensitivity: 'base' },
+  )
+)))
+
+const teamOptions = computed(() => teamsOptions.value.map((team) => ({
+  label: team.name || team.nombre || 'Equipo',
+  value: String(team._id || team.id || ''),
+  logoUrl: team.logoUrl || team.escudo_url || team.logo || '/images/default-team.svg',
 })))
 const occupiedNumbersByTeam = computed(() => {
   const targetValue = String(form.team || '').trim().toLowerCase()
@@ -285,6 +320,23 @@ const getCanonicalTeamId = (teamValue) => {
   return String(team?._id || team?.id || rawValue)
 }
 
+const getMatchTeamId = (team) => String(team && typeof team === 'object' ? team._id || team.id || '' : team || '')
+const liveMatchStatuses = new Set(['IN_PROGRESS', 'LIVE', 'EN VIVO', 'INICIADO'])
+const isTeamInLiveMatch = (teamValue) => {
+  const teamId = getCanonicalTeamId(teamValue)
+  return Boolean(teamId && store.matches.some((match) => (
+    liveMatchStatuses.has(String(match.status || '').trim().toUpperCase()) &&
+    [match.homeTeam, match.awayTeam].some((team) => getCanonicalTeamId(getMatchTeamId(team)) === teamId)
+  )))
+}
+const isPlayerInLiveMatch = (player) => isTeamInLiveMatch(getPlayerTeam(player) || getTeamId(player))
+const notifyPlayerLiveEditBlocked = () => {
+  $q.notify({
+    type: 'warning',
+    message: 'No se puede editar la información de un equipo o jugador mientras está disputando un partido en vivo.',
+  })
+}
+
 const getPlayerTeam = (player) => {
   const playerTeam = player.team
   const teamId = player.teamId || (
@@ -333,6 +385,10 @@ const handlePlayerAvatarError = (event) => {
 
 // Lógica de Edición Rápida en la Fila para el Organizador
 const startInlineEdit = (player) => {
+  if (isPlayerInLiveMatch(player)) {
+    notifyPlayerLiveEditBlocked()
+    return
+  }
   inlineEditId.value = player._id
   const teamObj = getPlayerTeam(player)
   inlineForm.name = player.name || player.nombre || ''
@@ -347,6 +403,10 @@ const cancelInlineEdit = () => {
 }
 
 const saveInlineEdit = async (player) => {
+  if (isPlayerInLiveMatch(player)) {
+    notifyPlayerLiveEditBlocked()
+    return
+  }
   if (!inlineForm.name.trim()) {
     $q.notify({ type: 'warning', message: 'El nombre del jugador no puede estar vacío.' })
     return
@@ -481,11 +541,16 @@ const openCreateDialog = () => {
 }
 
 const openEditDialog = (player) => {
+  if (isPlayerInLiveMatch(player)) {
+    notifyPlayerLiveEditBlocked()
+    return
+  }
+  const currentTeam = player.team?._id || player.teamId || player.team
   Object.assign(form, {
     name: player.name || player.nombre || '',
     number: player.number ?? player.dorsal ?? null,
     position: player.position || player.posicion || 'Delantero',
-    team: player.team?._id || player.team || '',
+    team: String(getCanonicalTeamId(currentTeam) || ''),
     status: player.status || player.condicion || 'TITULAR',
     photoUrl: player.photoUrl || '',
     goals: player.goals ?? player.goles ?? 0,
@@ -507,6 +572,13 @@ const closeDialog = () => {
 }
 
 const savePlayer = async () => {
+  if (editingId.value) {
+    const editingPlayer = store.players.find((player) => String(player._id || player.id) === String(editingId.value))
+    if (editingPlayer && isPlayerInLiveMatch(editingPlayer)) {
+      notifyPlayerLiveEditBlocked()
+      return
+    }
+  }
   if (!form.team) {
     $q.notify({ type: 'warning', message: 'Selecciona el equipo al que pertenece el jugador.' })
     return
@@ -529,6 +601,7 @@ const savePlayer = async () => {
 
   const payload = {
     ...form,
+    team: String(form.team),
     name: form.name.trim(),
     nombre: form.name.trim(),
     number: nextNumber,
@@ -550,7 +623,7 @@ const savePlayer = async () => {
 
   try {
     await (editingId.value
-      ? store.updatePlayer(editingId.value, payload)
+      ? store.updatePlayer(String(editingId.value), payload)
       : store.createPlayer(payload))
 
     closeDialog()
@@ -558,7 +631,7 @@ const savePlayer = async () => {
   } catch (error) {
     $q.notify({
       type: 'negative',
-      message: error.response?.data?.message || error.message || 'No se pudo guardar el jugador.',
+      message: error.response?.data?.message || 'No se pudo guardar el jugador.',
     })
   } finally {
     saving.value = false
@@ -762,6 +835,7 @@ onMounted(async () => {
                 outlined
                 min="1"
                 max="99"
+                :disable="isPlayerInLiveMatch(props.row)"
                 style="width: 65px; margin: 0 auto;"
                 @keydown.enter="saveInlineEdit(props.row)"
                 @keydown.esc="cancelInlineEdit"
@@ -782,6 +856,7 @@ onMounted(async () => {
                   :src="props.row.photoUrl || props.row.foto_url || '/images/default-avatar.svg'"
                   :alt="`Escudo de ${props.row.name || props.row.nombre}`"
                   class="player-avatar-image"
+                  crossorigin="anonymous"
                   @error="handlePlayerAvatarError"
                 />
               </div>
@@ -790,6 +865,7 @@ onMounted(async () => {
                 dense
                 outlined
                 class="full-width"
+                :disable="isPlayerInLiveMatch(props.row)"
                 placeholder="Nombre del jugador"
                 autofocus
                 @keydown.enter="saveInlineEdit(props.row)"
@@ -802,6 +878,7 @@ onMounted(async () => {
                   :src="props.row.photoUrl || props.row.foto_url || '/images/default-avatar.svg'"
                   :alt="`Foto de ${props.row.name || props.row.nombre}`"
                   class="player-avatar-image"
+                  crossorigin="anonymous"
                   @error="handlePlayerAvatarError"
                 />
               </div>
@@ -820,6 +897,7 @@ onMounted(async () => {
                 dense
                 outlined
                 style="min-width: 140px;"
+                :disable="isPlayerInLiveMatch(props.row)"
               />
             </div>
             <div v-else class="position-neon-tag">
@@ -841,6 +919,7 @@ onMounted(async () => {
                 dense
                 outlined
                 style="min-width: 170px;"
+                :disable="isPlayerInLiveMatch(props.row)"
               />
             </div>
             <div
@@ -882,6 +961,7 @@ onMounted(async () => {
                 dense
                 outlined
                 style="min-width: 160px; margin: 0 auto;"
+                :disable="isPlayerInLiveMatch(props.row)"
               />
             </div>
             <span
@@ -930,6 +1010,7 @@ onMounted(async () => {
                 icon="check_circle"
                 color="positive"
                 :loading="inlineEditSaving"
+                :disable="inlineEditSaving || isPlayerInLiveMatch(props.row)"
                 @click="saveInlineEdit(props.row)"
                 aria-label="Guardar cambios rápidos"
                 class="q-mr-xs"
@@ -956,6 +1037,7 @@ onMounted(async () => {
                 dense
                 icon="edit"
                 color="secondary"
+                :disable="isPlayerInLiveMatch(props.row)"
                 @click="startInlineEdit(props.row)"
                 aria-label="Edición rápida en fila"
                 class="q-mr-xs"
@@ -968,6 +1050,7 @@ onMounted(async () => {
                 dense
                 icon="tune"
                 color="primary"
+                :disable="isPlayerInLiveMatch(props.row)"
                 @click="openEditDialog(props.row)"
                 aria-label="Ficha completa del jugador"
                 class="q-mr-xs"
@@ -1013,6 +1096,7 @@ onMounted(async () => {
                 :src="player?.photoUrl || player?.foto_url || player?.photo || '/images/default-avatar.svg'"
                 :alt="`Foto de ${player.name || player.nombre}`"
                 class="player-avatar-image"
+                crossorigin="anonymous"
                 @error="(e) => e.target.src = '/images/default-avatar.svg'"
               />
             </div>
@@ -1025,6 +1109,7 @@ onMounted(async () => {
                 :src="getPlayerTeam(player)?.logoUrl || getPlayerTeam(player)?.escudo_url || getPlayerTeam(player)?.logo || getDefaultTeamLogo(getPlayerTeam(player))"
                 :alt="`Escudo de ${getPlayerTeamName(player)}`"
                 class="player-card__crest-image"
+                crossorigin="anonymous"
                 @error="(e) => e.target.src = getDefaultTeamLogo(getPlayerTeam(player))"
               />
             </div>
@@ -1057,6 +1142,17 @@ onMounted(async () => {
               {{ getCondicionMeta(player.status || player.condicion).label }}
             </span>
           </div>
+          <div
+            v-if="getPlayerReturnLabel(player)"
+            class="player-card__return-badge"
+            :class="String(player.status || player.condicion).toUpperCase() === 'LESIONADO' ? 'player-card__return-badge--injury' : 'player-card__return-badge--suspension'"
+          >
+            <q-icon
+              :name="String(player.status || player.condicion).toUpperCase() === 'LESIONADO' ? 'medical_services' : 'gavel'"
+              size="13px"
+            />
+            {{ getPlayerReturnLabel(player) }}
+          </div>
 
           <!-- ESTADÍSTICAS RÁPIDAS -->
           <div class="player-card__stats row items-center justify-around q-py-sm q-px-md border-top-dark">
@@ -1087,6 +1183,7 @@ onMounted(async () => {
               icon="edit"
               color="secondary"
               label="Editar"
+              :disable="isPlayerInLiveMatch(player)"
               @click="openEditDialog(player)"
             />
             <q-btn
@@ -1145,7 +1242,7 @@ onMounted(async () => {
                 @click="form.team = teamOption.value"
               >
                 <div class="sport-crest-container" style="width: 32px; height: 32px;">
-                  <img :src="teamOption.logoUrl" :alt="teamOption.label" style="width: 28px; height: 28px; border-radius: 50%; object-fit: contain;" />
+                  <img :src="teamOption.logoUrl" :alt="teamOption.label" crossorigin="anonymous" style="width: 28px; height: 28px; border-radius: 50%; object-fit: contain;" />
                 </div>
                 <span class="team-select-label">{{ teamOption.label }}</span>
               </button>
@@ -1748,6 +1845,30 @@ onMounted(async () => {
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+
+.player-card__return-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0 12px 12px;
+  padding: 5px 8px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.player-card__return-badge--injury {
+  color: #fb923c;
+  background: rgba(251, 146, 60, 0.12);
+}
+
+.player-card__return-badge--suspension {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.12);
 }
 
 .player-card__meta {

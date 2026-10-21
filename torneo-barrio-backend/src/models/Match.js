@@ -82,12 +82,70 @@ const eventSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    recoveryDuration: {
+      type: Number,
+      min: 1,
+      default: null,
+    },
+    recoveryUnit: {
+      type: String,
+      enum: ['DAYS', 'WEEKS'],
+      default: 'DAYS',
+    },
+    recoveryDate: {
+      type: Date,
+      default: null,
+    },
     description: {
       type: String,
       default: '',
     },
   },
   { strict: false }
+);
+
+const lineupEntrySchema = new mongoose.Schema(
+  {
+    player: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Player',
+      required: true,
+    },
+    isStarter: {
+      type: Boolean,
+      default: false,
+    },
+    isOnField: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  { _id: false }
+);
+
+const officialLineupEntrySchema = new mongoose.Schema(
+  {
+    team: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Team',
+      required: true,
+    },
+    player: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Player',
+      required: true,
+    },
+    status: {
+      type: String,
+      enum: ['TITULAR', 'SUPLENTE'],
+      required: true,
+    },
+    isOnField: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  { _id: false }
 );
 
 const matchSchema = new mongoose.Schema(
@@ -129,6 +187,18 @@ const matchSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Team',
       required: [true, 'El equipo visitante es obligatorio']
+    },
+    homeLineup: {
+      type: [lineupEntrySchema],
+      default: [],
+    },
+    awayLineup: {
+      type: [lineupEntrySchema],
+      default: [],
+    },
+    lineup: {
+      type: [officialLineupEntrySchema],
+      default: [],
     },
     homeScore: {
       type: Number,

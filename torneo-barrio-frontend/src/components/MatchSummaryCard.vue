@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useQuasar } from 'quasar'
+import { useRouter } from 'vue-router'
 import {
   formatMatchDate,
   getId,
@@ -21,31 +22,19 @@ const props = defineProps({
 
 const store = useTournamentStore()
 const $q = useQuasar()
+const router = useRouter()
 
 const startMatchCard = () => {
   if (!canStartMatch.value) {
     $q.notify({ type: 'warning', message: startMatchBlockReason.value })
     return
   }
-  $q.dialog({
-    title: 'Iniciar Partido (Poner EN VIVO)',
-    message: `¿Deseas iniciar el encuentro entre ${props.match.homeTeam?.name || 'Local'} vs ${props.match.awayTeam?.name || 'Visitante'}? Pasará a EN VIVO con Bandera Verde.`,
-    cancel: { label: 'Cancelar', color: 'grey-5', flat: true },
-    ok: { label: '🏁 Iniciar (EN VIVO)', color: 'positive' },
-    persistent: true,
-  }).onOk(async () => {
-    try {
-      await store.updateMatchResult(props.match._id, {
-        status: 'IN_PROGRESS',
-      })
-      $q.notify({
-        type: 'positive',
-        message: 'Partido iniciado: oficialmente EN VIVO 🟢 🏁',
-        icon: 'flag',
-      })
-    } catch (error) {
-      $q.notify({ type: 'negative', message: error?.response?.data?.message || 'No se pudo iniciar el partido.' })
-    }
+  router.push({
+    name: 'match-detail',
+    params: { id: props.match._id },
+    query: { start: '1' },
+  }).catch((error) => {
+    $q.notify({ type: 'negative', message: error?.message || 'No se pudo abrir la alineación del partido.' })
   })
 }
 

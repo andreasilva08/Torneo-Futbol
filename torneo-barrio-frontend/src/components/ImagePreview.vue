@@ -31,6 +31,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  crossorigin: {
+    type: String,
+    default: 'anonymous',
+  },
 })
 
 const loadFailed = ref(false)
@@ -85,6 +89,8 @@ const handleError = () => {
     <img
       :src="displaySrc"
       :alt="alt"
+      :crossorigin="crossorigin || 'anonymous'"
+      crossorigin="anonymous"
       :style="imageStyle"
       class="image-preview__image"
       @load="handleLoad"

@@ -28,6 +28,8 @@ const eventForm = reactive({
   playerIn: '',
   playerOut: '',
   injuryTime: '',
+  recoveryDuration: 1,
+  recoveryUnit: 'DAYS',
   minute: 1,
 })
 
@@ -36,7 +38,10 @@ const eventSaving = reactive({ value: false })
 const matchEditDialog = ref(false)
 const matchEditSaving = ref(false)
 const deletingMatch = ref(false)
+const lineupDialog = ref(false)
+const lineupSaving = ref(false)
 const showMatchdayHistory = ref(false)
+const lineupForm = reactive({ homeStatus: {}, awayStatus: {} })
 const matchEditForm = reactive({
   matchday: 1,
   matchDate: '',
@@ -57,7 +62,7 @@ const editForm = reactive({
   player: '',
   assistPlayer: '',
   isOwnGoal: false,
-  type: 'ASSIST',
+  type: '',
   playerIn: '',
   playerOut: '',
   injuryTime: '',
@@ -129,13 +134,52 @@ const teamOptions = computed(() => participantTeams.value.map((team) => ({
   value: getId(team),
 })))
 
+const toTeamId = (value) => String(value?._id || value?.id || value || '').trim()
+const substitutionTeamOptions = computed(() => {
+  const currentMatch = match.value
+  if (!currentMatch) return []
+
+  const home = currentMatch.homeTeam
+  const away = currentMatch.awayTeam
+  return [
+    { label: home?.name || home?.nombre || 'Equipo Local', value: toTeamId(home) },
+    { label: away?.name || away?.nombre || 'Equipo Visitante', value: toTeamId(away) },
+  ].filter((option) => option.value)
+})
+
+const onEventTeamChange = (value) => {
+  try {
+    const teamId = toTeamId(value)
+    if (!substitutionTeamOptions.value.some((option) => option.value === teamId)) {
+      eventForm.team = ''
+      eventForm.player = null
+      eventForm.playerOut = null
+      eventForm.playerIn = null
+      return
+    }
+
+    eventForm.team = teamId
+    eventForm.player = null
+    eventForm.playerOut = null
+    eventForm.playerIn = null
+  } catch (error) {
+    eventForm.team = ''
+    eventForm.player = null
+    eventForm.playerOut = null
+    eventForm.playerIn = null
+    $q.notify({ type: 'negative', message: error?.message || 'No se pudo cargar el equipo seleccionado.' })
+  }
+}
+
 const formatPlayerOption = (player) => {
   const num = player.number ?? player.dorsal ?? '?'
   const name = player.name || player.nombre || 'Jugador'
   const cond = player.status || player.condicion || 'TITULAR'
   const isExpelled = expelledPlayerIds.value.has(getId(player))
+  const availability = getPlayerAvailability(player)
   const tag = isExpelled ? ' [EXPULSADO]' : cond !== 'TITULAR' ? ` [${cond}]` : ''
-  return `#${num} ${name}${tag}`
+  const returnTag = availability.label ? ` · ${availability.label}` : ''
+  return `#${num} ${name}${tag}${returnTag}`
 }
 
 // Helper que compara si el jugador pertenece al equipo seleccionado (por ID o por Nombre)
@@ -150,7 +194,7 @@ const isPlayerInTeam = (player, selectedTeamId) => {
     ? String(targetTeamObj.name || targetTeamObj.nombre || '').toLowerCase().trim()
     : ''
 
-  const rawTeam = player.team || player.equipo
+  const rawTeam = player.team || player.equipo || player.teamId
   let pTeamId = ''
   let pTeamName = ''
 
@@ -211,6 +255,16 @@ const substitutedOutIds = computed(() => {
   return out
 })
 
+const substitutedInIds = computed(() => new Set(
+  (match.value?.events || [])
+    .filter((event) => {
+      const type = String(event.type || event.tipo || '').trim().toUpperCase()
+      return type === 'SUBSTITUTION' || type === 'CAMBIO' || type.includes('SUSTITUCION')
+    })
+    .map((event) => String(getId(event.playerIn) || getId(event.jugadorEntra) || '').trim())
+    .filter(Boolean),
+))
+
 // Validación de elegibilidad: Solo TITULAR o SUPLENTE, sin expulsión ni sustitución previa
 const isPlayerEligible = (player, targetTeamId, options = {}) => {
   if (!isPlayerInTeam(player, targetTeamId)) return false
@@ -222,7 +276,8 @@ const isPlayerEligible = (player, targetTeamId, options = {}) => {
 
   // La condición en el plantel debe ser TITULAR o SUPLENTE
   const status = String(player.status || player.condicion || 'TITULAR').toUpperCase()
-  if (status !== 'TITULAR' && status !== 'SUPLENTE') {
+  const availability = getPlayerAvailability(player)
+  if (!availability.available || !['TITULAR', 'SUPLENTE', 'LESIONADO'].includes(status) && !status.startsWith('SANCIONADO')) {
     return false
   }
 
@@ -234,24 +289,204 @@ const isPlayerEligible = (player, targetTeamId, options = {}) => {
   return true
 }
 
+const getPlayerAvailability = (player) => {
+  const status = String(player.status || player.condicion || 'TITULAR').trim().toUpperCase()
+  if (status === 'LESIONADO') {
+    const recoveryDate = player.recoveryDate ? new Date(player.recoveryDate) : null
+    const dateLabel = recoveryDate && !Number.isNaN(recoveryDate.getTime())
+      ? new Intl.DateTimeFormat('es').format(recoveryDate)
+      : ''
+    return {
+      available: Boolean(recoveryDate && recoveryDate <= new Date()),
+      label: dateLabel ? `Lesionado · retorno ${dateLabel}` : 'Lesionado · retorno pendiente',
+      type: 'injury',
+    }
+  }
+  if (status.startsWith('SANCIONADO')) {
+    const hasStoredReturnMatchday = player.suspendedUntilMatchday !== null &&
+      player.suspendedUntilMatchday !== undefined &&
+      player.suspendedUntilMatchday !== ''
+    const suspendedUntil = hasStoredReturnMatchday ? Number(player.suspendedUntilMatchday) : Number.NaN
+    const hasReturnMatchday = Number.isFinite(suspendedUntil)
+    const returnDate = player.suspensionReturnDate ? new Date(player.suspensionReturnDate) : null
+    const returnDateLabel = returnDate && !Number.isNaN(returnDate.getTime())
+      ? new Intl.DateTimeFormat('es').format(returnDate)
+      : ''
+    return {
+      available: hasReturnMatchday && Number(match.value?.matchday) > suspendedUntil,
+      label: returnDateLabel
+        ? `Retorno ${returnDateLabel}`
+        : hasReturnMatchday ? `Retorno J${suspendedUntil + 1}` : 'Sancionado · retorno pendiente',
+      type: 'suspension',
+    }
+  }
+  return {
+    available: status === 'TITULAR' || status === 'SUPLENTE',
+    label: '',
+    type: '',
+  }
+}
+
+const isPlayerAvailableForLineup = (player) => getPlayerAvailability(player).available
+
+const getRosterOptions = (teamId, expectedStatus) => store.players
+  .filter((player) => isPlayerInTeam(player, teamId))
+  .map((player) => {
+    const availability = getPlayerAvailability(player)
+    const status = String(player.status || player.condicion || 'TITULAR').trim().toUpperCase()
+    const isRecovered = status === 'LESIONADO' && availability.available
+    const hasExpectedStatus = status === expectedStatus || isRecovered ||
+      (status.startsWith('SANCIONADO') && availability.available)
+    return {
+      label: formatPlayerOption(player),
+      value: getId(player),
+      disable: !availability.available || !hasExpectedStatus,
+      availabilityLabel: availability.label,
+      availabilityType: availability.type,
+    }
+  })
+
+const lineupStatusOptions = [
+  { label: 'Titular', value: 'TITULAR' },
+  { label: 'Suplente', value: 'SUPLENTE' },
+  { label: 'No convocado', value: 'NO_CONVOCADO' },
+]
+const getLineupToggleColor = (status) => ({
+  TITULAR: 'green-7',
+  SUPLENTE: 'blue-7',
+  NO_CONVOCADO: 'grey-7',
+}[status] || 'grey-7')
+const lineupPositionGroups = ['Porteros', 'Defensas', 'Mediocampistas', 'Delanteros']
+const getPositionGroupName = (position) => {
+  const normalized = String(position || '').trim().toLowerCase()
+  if (normalized.includes('port') || normalized.includes('arquero') || normalized.includes('goalkeeper')) return 'Porteros'
+  if (normalized.includes('def')) return 'Defensas'
+  if (normalized.includes('medio') || normalized.includes('mediocamp') || normalized.includes('volante')) return 'Mediocampistas'
+  return 'Delanteros'
+}
+
+const getLineupGroups = (teamId, selections) => lineupPositionGroups.map((label) => ({
+  label,
+  players: store.players
+    .filter((player) => isPlayerInTeam(player, teamId) && getPositionGroupName(player.position || player.posicion) === label)
+    .sort((first, second) => String(first.name || first.nombre || '').localeCompare(String(second.name || second.nombre || ''), 'es', { sensitivity: 'base' }))
+    .map((player) => ({
+      player,
+      playerId: getId(player),
+      status: selections[getId(player)] || 'NO_CONVOCADO',
+      availability: getPlayerAvailability(player),
+    })),
+})).filter((group) => group.players.length)
+
+const homeLineupGroups = computed(() => getLineupGroups(getId(match.value?.homeTeam), lineupForm.homeStatus))
+const awayLineupGroups = computed(() => getLineupGroups(getId(match.value?.awayTeam), lineupForm.awayStatus))
+const countLineupStatus = (selections, status) => Object.values(selections).filter((value) => value === status).length
+
+const isGoalkeeperPlayer = (player) => {
+  // Busca posición en todas las variantes posibles del objeto (plano o anidado)
+  const pos = String(
+    player?.position || player?.posicion ||
+    player?.player?.position || player?.player?.posicion || ''
+  ).trim().toLowerCase()
+  return (
+    pos.includes('port') ||
+    pos.includes('arquero') ||
+    pos.includes('goalkeeper') ||
+    pos.includes('gk') ||
+    pos === 'po'
+  )
+}
+
+const countStartingGoalkeepers = (teamId, statusMap) => {
+  if (!teamId || !statusMap) return 0
+  return store.players
+    .filter((player) => isPlayerInTeam(player, teamId) && isGoalkeeperPlayer(player))
+    .filter((player) => {
+      const playerId = getId(player)
+      const mappedStatus = statusMap[playerId]
+      // Acepta TITULAR en el mapa de estado O el propio status/condicion del jugador
+      const playerStatus = String(player?.status || player?.condicion || '').toUpperCase()
+      return mappedStatus === 'TITULAR' || (mappedStatus === undefined && playerStatus === 'TITULAR')
+    })
+    .length
+}
+
+const getTeamLineup = (teamId) => {
+  if (String(teamId) === getId(match.value?.homeTeam)) return match.value?.homeLineup || []
+  if (String(teamId) === getId(match.value?.awayTeam)) return match.value?.awayLineup || []
+  return []
+}
+
+const isPlayerOnField = (player, teamId) => {
+  const playerId = getId(player)
+  const globalEntry = (match.value?.lineup || []).find((entry) => (
+    getId(entry.player) === playerId &&
+    getId(entry.team) === String(teamId)
+  ))
+  if (globalEntry) return globalEntry.isOnField === true
+  return getTeamLineup(teamId).some((entry) => getId(entry.player) === playerId && entry.isOnField === true)
+}
+
+const getInitialLineupStatus = (teamId, savedLineup) => {
+  const selections = Object.fromEntries(store.players
+    .filter((player) => isPlayerInTeam(player, teamId))
+    .map((player) => [getId(player), 'NO_CONVOCADO']))
+
+  if (savedLineup?.length) {
+    for (const entry of savedLineup) {
+      selections[getId(entry.player)] = entry.isOnField ? 'TITULAR' : 'SUPLENTE'
+    }
+    return selections
+  }
+
+  const eligiblePlayers = store.players
+    .filter((player) => isPlayerInTeam(player, teamId) && isPlayerAvailableForLineup(player))
+    .sort((first, second) => {
+      const firstIsStarter = String(first.status || first.condicion || 'TITULAR').toUpperCase() === 'TITULAR'
+      const secondIsStarter = String(second.status || second.condicion || 'TITULAR').toUpperCase() === 'TITULAR'
+      return Number(secondIsStarter) - Number(firstIsStarter)
+    })
+  let starterCount = 0
+  for (const player of eligiblePlayers) {
+    const status = String(player.status || player.condicion || 'TITULAR').toUpperCase()
+    if (status === 'TITULAR' && starterCount < 11) {
+      selections[getId(player)] = 'TITULAR'
+      starterCount += 1
+    } else {
+      selections[getId(player)] = 'SUPLENTE'
+    }
+  }
+  return selections
+}
+
 // Opciones de jugadores para goleador
 const goalPlayerOptions = computed(() => store.players
-  .filter((player) => isPlayerEligible(player, goalForm.team))
+  .filter((player) => isPlayerOnField(player, goalForm.team) && isPlayerEligible(player, goalForm.team))
   .map((player) => ({ label: formatPlayerOption(player), value: getId(player) })))
 
 // Opciones de jugadores para asistencia
 const assistPlayerOptions = computed(() => store.players
-  .filter((player) => isPlayerEligible(player, goalForm.team) && String(getId(player)) !== String(goalForm.player))
+  .filter((player) => isPlayerOnField(player, goalForm.team) && isPlayerEligible(player, goalForm.team) && String(getId(player)) !== String(goalForm.player))
   .map((player) => ({ label: formatPlayerOption(player), value: getId(player) })))
 
 // Opciones de jugador principal para eventos (tarjeta, asistencia, lesionado)
 const eventPlayerOptions = computed(() => store.players
-  .filter((player) => isPlayerEligible(player, eventForm.team))
+  .filter((player) => isPlayerOnField(player, eventForm.team) && isPlayerEligible(player, eventForm.team))
   .map((player) => ({ label: formatPlayerOption(player), value: getId(player) })))
 
 // Opciones de jugador que sale en sustitución (debe estar en cancha)
 const playerOutOptions = computed(() => store.players
-  .filter((player) => isPlayerEligible(player, eventForm.team))
+  .filter((player) => (
+    isPlayerOnField(player, eventForm.team) &&
+    isPlayerEligible(player, eventForm.team)
+  ))
+  .map((player) => ({ label: formatPlayerOption(player), value: getId(player) })))
+
+const eventInjuredOptions = computed(() => store.players
+  .filter((player) => (
+    isPlayerOnField(player, eventForm.team) &&
+    isPlayerEligible(player, eventForm.team)
+  ))
   .map((player) => ({ label: formatPlayerOption(player), value: getId(player) })))
 
 // Opciones de jugador que ingresa en sustitución (suplente disponible)
@@ -259,10 +494,12 @@ const playerInOptions = computed(() => store.players
   .filter((player) => {
     if (!isPlayerInTeam(player, eventForm.team)) return false
     const pId = getId(player)
+    const lineupEntry = getTeamLineup(eventForm.team).find((entry) => getId(entry.player) === pId)
+    if (!lineupEntry || lineupEntry.isStarter || lineupEntry.isOnField) return false
     if (expelledPlayerIds.value.has(pId)) return false
+    if (substitutedInIds.value.has(pId)) return false
     if (String(pId) === String(eventForm.playerOut || eventForm.player)) return false
-    const status = String(player.status || player.condicion || 'TITULAR').toUpperCase()
-    return status === 'TITULAR' || status === 'SUPLENTE'
+    return isPlayerEligible(player, eventForm.team)
   })
   .map((player) => ({ label: formatPlayerOption(player), value: getId(player) })))
 
@@ -309,6 +546,12 @@ const teamName = (value) => {
   }
   const found = store.teams.find((team) => getId(team) === getId(value))
   return found?.name || found?.nombre || 'Equipo'
+}
+
+const formatRecoveryDate = (value) => {
+  if (!value) return 'Pendiente de definir'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? 'Pendiente de definir' : new Intl.DateTimeFormat('es').format(date)
 }
 
 const teamStadium = (value) => {
@@ -450,11 +693,17 @@ const timeline = computed(() => {
 
 const loadMatch = async (matchId) => {
   await Promise.all([store.fetchMatch(matchId), store.fetchTeams(), store.fetchPlayers()])
+  if (route.query.start === '1' && match.value) {
+    openLineupDialog()
+    const query = { ...route.query }
+    delete query.start
+    await router.replace({ query })
+  }
 }
 
-watch(() => route.params.id, (matchId) => {
+watch(() => route.params.id, async (matchId) => {
   if (matchId) {
-    loadMatch(matchId)
+    await loadMatch(matchId)
   }
 }, { immediate: true })
 
@@ -467,12 +716,6 @@ watch(() => goalForm.player, () => {
   if (goalForm.player && goalForm.assistPlayer === goalForm.player) {
     goalForm.assistPlayer = ''
   }
-})
-
-watch(() => eventForm.team, () => {
-  eventForm.player = ''
-  eventForm.playerIn = ''
-  eventForm.playerOut = ''
 })
 
 const apiGoals = () => (match.value?.goals || []).map((goal) => ({
@@ -496,6 +739,9 @@ const apiEvents = () => (match.value?.events || []).map((event) => ({
   playerIn: getId(event.playerIn) || null,
   playerOut: getId(event.playerOut) || null,
   injuryTime: event.injuryTime || '',
+  recoveryDuration: Number(event.recoveryDuration) || null,
+  recoveryUnit: event.recoveryUnit || 'DAYS',
+  recoveryDate: event.recoveryDate || null,
   description: event.description || '',
 }))
 
@@ -505,12 +751,15 @@ const notifyIfMatchNotLive = () => {
     $q.notify({ type: 'warning', message: 'Debes iniciar el partido para poder registrar eventos' })
   }
 }
-const matchStatusOptions = [
+// El modal de edición sólo permite cambiar entre PROGRAMADO y SUSPENDIDO.
+// "En Vivo" → sólo vía botón "Iniciar Partido" + modal de alineación.
+// "Finalizado" → sólo vía botón "Finalizar Partido".
+const canSelectLiveStatus = computed(() => normalizeMatchStatus(match.value?.status) === 'IN_PROGRESS')
+const matchStatusOptions = computed(() => [
   { label: 'Programado', value: 'SCHEDULED' },
-  { label: 'En vivo', value: 'IN_PROGRESS' },
-  { label: 'Finalizado', value: 'FINISHED' },
+  ...(canSelectLiveStatus.value ? [{ label: 'En Vivo', value: 'IN_PROGRESS' }] : []),
   { label: 'Suspendido', value: 'SUSPENDED' },
-]
+])
 
 const getLocalDateInput = (value) => {
   if (!value) return ''
@@ -534,13 +783,19 @@ const openMatchEditDialog = () => {
     $q.notify({ type: 'warning', message: 'El partido finalizado no se puede editar.' })
     return
   }
+  // Si el partido está EN VIVO o FINALIZADO, el selector sólo muestra SCHEDULED/SUSPENDED.
+  // Reseteamos al estado editable más cercano para no preseleccionar un valor fuera del combo.
+  const currentStatus = normalizeMatchStatus(match.value.status)
+  const editableStatus = ['SCHEDULED', 'IN_PROGRESS', 'SUSPENDED'].includes(currentStatus)
+    ? currentStatus
+    : 'SCHEDULED'
   Object.assign(matchEditForm, {
     matchday: Number(match.value.matchday) || 1,
     matchDate: getLocalDateInput(match.value.date),
     matchTime: getLocalTimeInput(match.value.date),
     stadium: match.value.stadium || teamStadium(match.value.homeTeam) || 'Cancha Local',
     referee: match.value.referee || '',
-    status: normalizeMatchStatus(match.value.status) || 'SCHEDULED',
+    status: editableStatus,
   })
   matchEditDialog.value = true
 }
@@ -579,9 +834,9 @@ const saveMatchEdits = async () => {
       return
     }
   }
-  if (normalizeMatchStatus(matchEditForm.status) === 'IN_PROGRESS' &&
-      (!matchEditForm.matchDate || !matchEditForm.matchTime)) {
-    $q.notify({ type: 'warning', message: 'No se puede iniciar un partido sin fecha y hora válidas.' })
+  // Nunca permitir que este formulario envíe IN_PROGRESS o FINISHED.
+  if (normalizeMatchStatus(matchEditForm.status) === 'FINISHED') {
+    $q.notify({ type: 'warning', message: 'El estado del partido no se puede cambiar desde aquí.' })
     return
   }
 
@@ -594,14 +849,18 @@ const saveMatchEdits = async () => {
       throw new Error('La fecha y la hora ingresadas no son válidas.')
     }
 
+    // Si el partido ya está EN VIVO o FINALIZADO, no tocamos el status desde aquí.
     await store.updateMatch(match.value._id, {
       matchday: Number(matchEditForm.matchday),
       matchdayDate: matchEditForm.matchDate,
       date: matchDate ? matchDate.toISOString() : null,
       stadium: matchEditForm.stadium.trim(),
       referee: matchEditForm.referee.trim(),
-      status: matchEditForm.status,
+      status: normalizeMatchStatus(matchEditForm.status),
     })
+    if (match.value && normalizeMatchStatus(matchEditForm.status) === 'SCHEDULED') {
+      match.value.status = 'SCHEDULED'
+    }
     matchEditDialog.value = false
     $q.notify({ type: 'positive', message: 'Datos generales y estado del partido actualizados.' })
   } catch (error) {
@@ -613,6 +872,16 @@ const saveMatchEdits = async () => {
 
 watch(() => matchEditForm.status, (status) => {
   const normalizedStatus = normalizeMatchStatus(status)
+
+  // Defensa: si por algún motivo llega IN_PROGRESS, revertir sin abrir lineup.
+  if (normalizedStatus === 'FINISHED') {
+    matchEditForm.status = normalizeMatchStatus(match.value?.status)
+      && ['SCHEDULED', 'SUSPENDED', 'POSTPONED'].includes(normalizeMatchStatus(match.value?.status))
+      ? normalizeMatchStatus(match.value.status)
+      : 'SCHEDULED'
+    return
+  }
+
   if (!['SUSPENDED', 'POSTPONED'].includes(normalizedStatus) ||
       normalizedStatus === normalizeMatchStatus(match.value?.status)) return
 
@@ -733,7 +1002,6 @@ const registerEvent = async () => {
     return
   }
   if (!match.value) return
-
   eventSaving.value = true
   try {
     const existingEvents = apiEvents()
@@ -746,6 +1014,8 @@ const registerEvent = async () => {
       playerIn: eventForm.playerIn || null,
       playerOut: eventForm.playerOut || (eventForm.type === 'INJURY' ? eventForm.player : null),
       injuryTime: eventForm.injuryTime || '',
+      recoveryDuration: eventForm.type === 'INJURY' ? Number(eventForm.recoveryDuration) : null,
+      recoveryUnit: eventForm.type === 'INJURY' ? eventForm.recoveryUnit : 'DAYS',
     }
 
     // Si es lesión, validamos que haya jugador que entra en sustitución
@@ -757,6 +1027,11 @@ const registerEvent = async () => {
       }
       if (!eventForm.playerIn) {
         $q.notify({ type: 'warning', message: 'Para un jugador lesionado es obligatorio registrar el jugador sustituto que ingresa.' })
+        eventSaving.value = false
+        return
+      }
+      if (!Number.isInteger(Number(eventForm.recoveryDuration)) || Number(eventForm.recoveryDuration) < 1) {
+        $q.notify({ type: 'warning', message: 'Indica una duración de recuperación válida.' })
         eventSaving.value = false
         return
       }
@@ -774,12 +1049,7 @@ const registerEvent = async () => {
     const updatedEvents = [...existingEvents, newEvent]
     await store.updateMatchEvents(match.value._id, updatedEvents)
 
-    // Si fue tarjeta roja directa o lesión, actualizar también condición en la store/bd
-    if (eventForm.type === 'RED_CARD' && eventForm.player) {
-      await store.updatePlayer(eventForm.player, { status: 'SANCIONADO_ROJA', condicion: 'SANCIONADO_ROJA' })
-    } else if (eventForm.type === 'INJURY' && eventForm.player) {
-      await store.updatePlayer(eventForm.player, { status: 'LESIONADO', condicion: 'LESIONADO' })
-    }
+    await store.fetchPlayers()
 
     $q.notify({
       type: 'positive',
@@ -787,12 +1057,14 @@ const registerEvent = async () => {
     })
 
     Object.assign(eventForm, {
-      type: 'ASSIST',
+      type: '',
       team: '',
       player: '',
       playerIn: '',
       playerOut: '',
       injuryTime: '',
+      recoveryDuration: 1,
+      recoveryUnit: 'DAYS',
       minute: 1,
     })
   } catch (error) {
@@ -818,6 +1090,8 @@ const openEditItem = (event) => {
     playerIn: getId(event.rawItem?.playerIn) || '',
     playerOut: getId(event.rawItem?.playerOut) || '',
     injuryTime: event.rawItem?.injuryTime || '',
+    recoveryDuration: Number(event.rawItem?.recoveryDuration) || 1,
+    recoveryUnit: event.rawItem?.recoveryUnit || 'DAYS',
     minute: Number(event.minute) || 1,
   })
 
@@ -880,6 +1154,8 @@ const saveEditedItem = async () => {
         playerIn: editForm.playerIn || null,
         playerOut: editForm.playerOut || null,
         injuryTime: editForm.injuryTime || '',
+        recoveryDuration: editForm.type === 'INJURY' ? Number(editForm.recoveryDuration) : null,
+        recoveryUnit: editForm.type === 'INJURY' ? editForm.recoveryUnit : 'DAYS',
       }
 
       await store.updateMatchEvents(match.value._id, currentEvents)
@@ -941,7 +1217,7 @@ const removeItem = (event) => {
 }
 
 // ─── Inicio del Encuentro (Poner EN VIVO con Bandera Verde) ─────────────────
-const startMatch = () => {
+const openLineupDialog = () => {
   if (!canStartMatch.value) {
     $q.notify({
       type: 'warning',
@@ -951,36 +1227,109 @@ const startMatch = () => {
     })
     return
   }
-  const isResuming = isSuspended.value
-  $q.dialog({
-    title: isResuming ? 'Reanudar Partido (Poner EN VIVO)' : 'Iniciar Partido (Poner EN VIVO)',
-    message: isResuming
-      ? '¿Confirmas la reprogramación e inicio del partido? El estado cambiará a EN VIVO.'
-      : '¿Confirmas el inicio del partido? El estado cambiará a EN VIVO (Bandera Verde) y se habilitará el registro de incidencias en tiempo real.',
-    cancel: { label: 'Cancelar', color: 'grey-5', flat: true },
-    ok: { label: isResuming ? 'Reanudar Partido' : '🏁 Iniciar Partido (EN VIVO)', color: 'positive' },
-    persistent: true,
-  }).onOk(async () => {
-    try {
-      const goals = apiGoals()
-      await store.updateMatchResult(match.value._id, {
-        homeScore: scoreFor(getId(match.value.homeTeam), goals),
-        awayScore: scoreFor(getId(match.value.awayTeam), goals),
-        status: 'IN_PROGRESS',
-        goals,
-      })
-      $q.notify({
-        type: 'positive',
-        message: isResuming
-          ? 'Partido reanudado; encuentro oficialmente EN VIVO 🟢 🏁'
-          : '¡Partido iniciado! Encuentro oficialmente EN VIVO 🟢 🏁',
-        icon: 'flag',
-      })
-    } catch (error) {
-      $q.notify({ type: 'negative', message: getApiErrorMessage(error) })
-    }
+
+  const homeStatus = getInitialLineupStatus(getId(match.value.homeTeam), match.value.homeLineup)
+  const awayStatus = getInitialLineupStatus(getId(match.value.awayTeam), match.value.awayLineup)
+  Object.assign(lineupForm, {
+    homeStatus,
+    awayStatus,
   })
+  lineupDialog.value = true
 }
+
+const getSelectedPlayerIds = (selections, status) => Object.entries(selections)
+  .filter(([, selectedStatus]) => selectedStatus === status)
+  .map(([playerId]) => String(playerId).trim())
+
+const toPlayerId = (item) => String(
+  typeof item === 'object' ? item?._id || item?.id || item?.player?._id || item?.player?.id || '' : item || '',
+).trim()
+
+const confirmMatchLineup = async () => {
+  const homeName = teamName(match.value?.homeTeam)
+  const awayName = teamName(match.value?.awayTeam)
+
+  if (countLineupStatus(lineupForm.homeStatus, 'TITULAR') !== 11) {
+    $q.notify({ type: 'warning', message: `El equipo ${homeName} debe tener exactamente 11 titulares.` })
+    return
+  }
+  if (countLineupStatus(lineupForm.awayStatus, 'TITULAR') !== 11) {
+    $q.notify({ type: 'warning', message: `El equipo ${awayName} debe tener exactamente 11 titulares.` })
+    return
+  }
+
+  // Validación estricta: exactamente 1 Portero en estado TITULAR (Verde)
+  const homeGkCount = countStartingGoalkeepers(getId(match.value?.homeTeam), lineupForm.homeStatus)
+  if (homeGkCount !== 1) {
+    $q.notify({
+      type: 'warning',
+      message: `El equipo ${homeName} debe tener exactamente 1 Portero en estado TITULAR (Verde).`,
+      icon: 'shield',
+    })
+    return
+  }
+
+  const awayGkCount = countStartingGoalkeepers(getId(match.value?.awayTeam), lineupForm.awayStatus)
+  if (awayGkCount !== 1) {
+    $q.notify({
+      type: 'warning',
+      message: `El equipo ${awayName} debe tener exactamente 1 Portero en estado TITULAR (Verde).`,
+      icon: 'shield',
+    })
+    return
+  }
+
+  lineupSaving.value = true
+  try {
+    const goals = apiGoals()
+
+    // IDs planos de titulares (solo strings de MongoDB)
+    const homeStarterIds = getSelectedPlayerIds(lineupForm.homeStatus, 'TITULAR')
+      .map(toPlayerId).filter(Boolean)
+    const awayStarterIds = getSelectedPlayerIds(lineupForm.awayStatus, 'TITULAR')
+      .map(toPlayerId).filter(Boolean)
+
+    // IDs planos de suplentes
+    const homeBenchIds = getSelectedPlayerIds(lineupForm.homeStatus, 'SUPLENTE')
+      .map(toPlayerId).filter(Boolean)
+    const awayBenchIds = getSelectedPlayerIds(lineupForm.awayStatus, 'SUPLENTE')
+      .map(toPlayerId).filter(Boolean)
+
+    // Payload limpio: SOLO campos nativos del esquema Match en Mongoose.
+    // homeBench / awayBench NO existen en el modelo → se omiten completamente.
+    // Los suplentes se incluyen DENTRO de homeLineup/awayLineup con isStarter:false.
+    const cleanPayload = {
+      status: 'IN_PROGRESS',
+      homeScore: Number(scoreFor(getId(match.value?.homeTeam), goals)) || 0,
+      awayScore: Number(scoreFor(getId(match.value?.awayTeam), goals)) || 0,
+      homeTeam: toPlayerId(match.value?.homeTeam),
+      awayTeam: toPlayerId(match.value?.awayTeam),
+      goals,
+      homeLineup: [
+        ...homeStarterIds.map((id) => ({ player: id, isStarter: true,  isOnField: true  })),
+        ...homeBenchIds.map((id)   => ({ player: id, isStarter: false, isOnField: false })),
+      ],
+      awayLineup: [
+        ...awayStarterIds.map((id) => ({ player: id, isStarter: true,  isOnField: true  })),
+        ...awayBenchIds.map((id)   => ({ player: id, isStarter: false, isOnField: false })),
+      ],
+      // Array unificado de IDs planos de los 22 titulares (home + away)
+      lineup: [...homeStarterIds, ...awayStarterIds],
+    }
+
+    await store.updateMatchResult(match.value._id, cleanPayload)
+    await store.fetchPlayers()
+    lineupDialog.value = false
+    $q.notify({ type: 'positive', message: 'Alineaciones confirmadas. El partido está EN VIVO.', icon: 'flag' })
+  } catch (error) {
+    $q.notify({ type: 'negative', message: getApiErrorMessage(error) })
+  } finally {
+    lineupSaving.value = false
+  }
+}
+
+// startMatch es alias directo de openLineupDialog; se mantiene por compatibilidad con el template.
+const startMatch = () => openLineupDialog()
 
 // ─── Finalización del Encuentro (Bandera Roja) ───────────────────────────────
 const finishMatch = () => {
@@ -1201,6 +1550,107 @@ const finishMatch = () => {
         </q-card-section>
       </q-card>
 
+      <q-dialog v-model="lineupDialog" persistent>
+        <q-card class="lineup-dialog-card">
+          <q-card-section class="dialog-header-section">
+            <div class="text-subtitle1 text-weight-bold">Confirmar alineaciones</div>
+            <div class="text-caption text-grey-5">Selecciona 11 titulares y los suplentes disponibles de cada equipo.</div>
+          </q-card-section>
+
+          <q-form class="q-pa-lg q-gutter-y-md" @submit.prevent="confirmMatchLineup">
+            <div class="lineup-team-grid">
+              <section class="lineup-team-section">
+                <div class="row items-center justify-between q-mb-sm">
+                  <div class="text-weight-bold">{{ teamName(match.homeTeam) }} · Local</div>
+                  <div class="row items-center gap-xs">
+                    <q-badge :color="countStartingGoalkeepers(getId(match.homeTeam), lineupForm.homeStatus) === 1 ? 'positive' : 'negative'">
+                      {{ countStartingGoalkeepers(getId(match.homeTeam), lineupForm.homeStatus) === 1 ? '1 Portero Titular' : 'Falta Portero Titular' }}
+                    </q-badge>
+                    <q-badge :color="countLineupStatus(lineupForm.homeStatus, 'TITULAR') === 11 ? 'positive' : 'warning'">
+                      {{ countLineupStatus(lineupForm.homeStatus, 'TITULAR') }}/11 titulares
+                    </q-badge>
+                  </div>
+                </div>
+                <section v-for="group in homeLineupGroups" :key="`home-${group.label}`" class="lineup-position-group">
+                  <div class="text-caption text-weight-bold text-primary q-mb-xs">{{ group.label }}</div>
+                  <div v-for="entry in group.players" :key="entry.playerId" class="lineup-player-row">
+                    <div class="lineup-player-copy">
+                      <span>{{ formatPlayerOption(entry.player) }}</span>
+                      <q-badge v-if="entry.availability.label" :color="entry.availability.type === 'injury' ? 'warning' : 'negative'">
+                        {{ entry.availability.label }}
+                      </q-badge>
+                    </div>
+                    <q-btn-toggle
+                      v-model="lineupForm.homeStatus[entry.playerId]"
+                      :options="lineupStatusOptions"
+                      dense
+                      no-caps
+                      spread
+                      unelevated
+                      color="grey-6"
+                      :toggle-color="getLineupToggleColor(entry.status)"
+                      toggle-text-color="white"
+                      :disable="!entry.availability.available"
+                      class="lineup-status-toggle"
+                    />
+                  </div>
+                </section>
+              </section>
+
+              <section class="lineup-team-section">
+                <div class="row items-center justify-between q-mb-sm">
+                  <div class="text-weight-bold">{{ teamName(match.awayTeam) }} · Visitante</div>
+                  <div class="row items-center gap-xs">
+                    <q-badge :color="countStartingGoalkeepers(getId(match.awayTeam), lineupForm.awayStatus) === 1 ? 'positive' : 'negative'">
+                      {{ countStartingGoalkeepers(getId(match.awayTeam), lineupForm.awayStatus) === 1 ? '1 Portero Titular' : 'Falta Portero Titular' }}
+                    </q-badge>
+                    <q-badge :color="countLineupStatus(lineupForm.awayStatus, 'TITULAR') === 11 ? 'positive' : 'warning'">
+                      {{ countLineupStatus(lineupForm.awayStatus, 'TITULAR') }}/11 titulares
+                    </q-badge>
+                  </div>
+                </div>
+                <section v-for="group in awayLineupGroups" :key="`away-${group.label}`" class="lineup-position-group">
+                  <div class="text-caption text-weight-bold text-primary q-mb-xs">{{ group.label }}</div>
+                  <div v-for="entry in group.players" :key="entry.playerId" class="lineup-player-row">
+                    <div class="lineup-player-copy">
+                      <span>{{ formatPlayerOption(entry.player) }}</span>
+                      <q-badge v-if="entry.availability.label" :color="entry.availability.type === 'injury' ? 'warning' : 'negative'">
+                        {{ entry.availability.label }}
+                      </q-badge>
+                    </div>
+                    <q-btn-toggle
+                      v-model="lineupForm.awayStatus[entry.playerId]"
+                      :options="lineupStatusOptions"
+                      dense
+                      no-caps
+                      spread
+                      unelevated
+                      color="grey-6"
+                      :toggle-color="getLineupToggleColor(entry.status)"
+                      toggle-text-color="white"
+                      :disable="!entry.availability.available"
+                      class="lineup-status-toggle"
+                    />
+                  </div>
+                </section>
+              </section>
+            </div>
+
+            <div class="row justify-end q-gutter-sm">
+              <q-btn flat label="Cancelar" color="grey-5" @click="lineupDialog = false" />
+              <q-btn
+                unelevated
+                color="positive"
+                icon="flag"
+                label="Confirmar e iniciar"
+                type="submit"
+                :loading="lineupSaving"
+              />
+            </div>
+          </q-form>
+        </q-card>
+      </q-dialog>
+
       <!-- REGISTRATION FORMS (GOAL & EVENT) IF NOT FINISHED -->
       <div v-if="!isFinished" class="row q-col-gutter-lg q-mb-xl">
         <!-- FORM 1: GOAL REGISTRATION -->
@@ -1331,8 +1781,8 @@ const finishMatch = () => {
                 />
 
                 <q-select
-                  v-model="eventForm.team"
-                  :options="teamOptions"
+                  :model-value="eventForm.team"
+                  :options="substitutionTeamOptions"
                   emit-value
                   map-options
                   label="Equipo involucrado *"
@@ -1340,6 +1790,7 @@ const finishMatch = () => {
                   stack-label
                   required
                   :disable="!isMatchLive"
+                  @update:model-value="onEventTeamChange"
                 />
 
                 <!-- JUGADOR PARA TARJETA O ASISTENCIA -->
@@ -1395,7 +1846,7 @@ const finishMatch = () => {
                 <template v-if="eventForm.type === 'INJURY'">
                   <q-select
                     v-model="eventForm.player"
-                    :options="eventPlayerOptions"
+                    :options="eventInjuredOptions"
                     emit-value
                     map-options
                     label="Jugador lesionado 🏥 *"
@@ -1409,13 +1860,40 @@ const finishMatch = () => {
                   />
                   <q-input
                     v-model="eventForm.injuryTime"
-                    label="Tiempo estimado de baja médica (Ej: 15 días, 3 semanas) *"
+                    label="Detalle de la lesión (opcional)"
                     outlined
                     stack-label
-                    placeholder="Ej: 15 días"
-                    required
                     :disable="!isMatchLive"
                   />
+                  <div class="row q-col-gutter-sm">
+                    <div class="col-7">
+                      <q-input
+                        v-model.number="eventForm.recoveryDuration"
+                        type="number"
+                        min="1"
+                        label="Recuperación estimada *"
+                        outlined
+                        stack-label
+                        required
+                        :disable="!isMatchLive"
+                      />
+                    </div>
+                    <div class="col-5">
+                      <q-select
+                        v-model="eventForm.recoveryUnit"
+                        :options="[
+                          { label: 'Días', value: 'DAYS' },
+                          { label: 'Semanas', value: 'WEEKS' },
+                        ]"
+                        emit-value
+                        map-options
+                        label="Unidad"
+                        outlined
+                        stack-label
+                        :disable="!isMatchLive"
+                      />
+                    </div>
+                  </div>
                   <q-select
                     v-model="eventForm.playerIn"
                     :options="playerInOptions"
@@ -1518,7 +1996,7 @@ const finishMatch = () => {
                         🏥 Lesión: {{ event.playerName }}
                       </div>
                       <div class="text-caption text-grey-4" style="font-size: 0.72rem;">
-                        Baja estimada: {{ event.rawItem?.injuryTime || 'En observación' }}
+                        Retorno estimado: {{ formatRecoveryDate(event.rawItem?.recoveryDate) }}
                       </div>
                       <div v-if="event.playerInName" class="text-caption text-primary" style="font-size: 0.72rem;">
                         🔄 Reemplazado por: {{ event.playerInName }}
@@ -1590,7 +2068,7 @@ const finishMatch = () => {
                         🏥 Lesión: {{ event.playerName }}
                       </div>
                       <div class="text-caption text-grey-4" style="font-size: 0.72rem;">
-                        Baja estimada: {{ event.rawItem?.injuryTime || 'En observación' }}
+                        Retorno estimado: {{ formatRecoveryDate(event.rawItem?.recoveryDate) }}
                       </div>
                       <div v-if="event.playerInName" class="text-caption text-primary" style="font-size: 0.72rem;">
                         🔄 Reemplazado por: {{ event.playerInName }}
@@ -1828,6 +2306,12 @@ const finishMatch = () => {
                 dense
                 required
               />
+              <!-- Los estados EN VIVO y FINALIZADO se controlan desde los botones del panel principal -->
+              <div class="text-caption text-grey-5 q-mt-xs" style="font-size:0.75rem;">
+                <q-icon name="info" size="12px" class="q-mr-xs" />
+                <strong>EN VIVO</strong> → botón «Iniciar Partido» &nbsp;·&nbsp;
+                <strong>Finalizado</strong> → botón «Finalizar Partido».
+              </div>
             </div>
             <q-banner
               v-if="['SUSPENDED', 'POSTPONED'].includes(matchEditForm.status)"
@@ -1935,10 +2419,10 @@ const finishMatch = () => {
               <q-select
                 v-model="editForm.type"
                 :options="[
-                  { label: 'Tarjeta amarilla 🟨', value: 'YELLOW_CARD' },
-                  { label: 'Tarjeta roja directa 🟥', value: 'RED_CARD' },
-                  { label: 'Sustitución de jugador 🔄', value: 'SUBSTITUTION' },
-                  { label: 'Baja por lesión 🏥', value: 'INJURY' },
+                    { label: 'Tarjeta amarilla 🟨', value: 'YELLOW_CARD' },
+                    { label: 'Tarjeta roja directa 🟥', value: 'RED_CARD' },
+                    { label: 'Sustitución de jugador 🔄', value: 'SUBSTITUTION' },
+                    { label: 'Baja por lesión 🏥', value: 'INJURY' },
                 ]"
                 emit-value
                 map-options
@@ -1995,6 +2479,33 @@ const finishMatch = () => {
                 outlined
                 stack-label
               />
+              <div v-if="editForm.type === 'INJURY'" class="row q-col-gutter-sm">
+                <div class="col-7">
+                  <q-input
+                    v-model.number="editForm.recoveryDuration"
+                    type="number"
+                    min="1"
+                    label="Recuperación estimada"
+                    outlined
+                    stack-label
+                    required
+                  />
+                </div>
+                <div class="col-5">
+                  <q-select
+                    v-model="editForm.recoveryUnit"
+                    :options="[
+                      { label: 'Días', value: 'DAYS' },
+                      { label: 'Semanas', value: 'WEEKS' },
+                    ]"
+                    emit-value
+                    map-options
+                    label="Unidad"
+                    outlined
+                    stack-label
+                  />
+                </div>
+              </div>
             </template>
 
             <q-input
@@ -2041,6 +2552,90 @@ const finishMatch = () => {
   border: 1px solid var(--tb-border) !important;
   border-radius: var(--tb-radius-lg) !important;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4) !important;
+}
+
+.lineup-dialog-card {
+  width: 94vw;
+  max-width: 880px;
+  background: var(--tb-surface) !important;
+  border: 1px solid var(--tb-border);
+  color: var(--tb-text);
+}
+
+.lineup-team-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.lineup-team-section {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--tb-border);
+  border-radius: var(--tb-radius-md);
+  background: var(--tb-surface-raised);
+}
+
+.lineup-position-group + .lineup-position-group {
+  margin-top: 14px;
+}
+
+.lineup-player-row {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) minmax(0, 2fr);
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--tb-border);
+}
+
+.lineup-player-copy {
+  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.lineup-status-toggle {
+  width: 100%;
+}
+
+.lineup-status-toggle :deep(.q-btn) {
+  min-height: 34px;
+  padding: 0 5px;
+  font-size: 0.7rem;
+  opacity: 0.7;
+  transition: opacity 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
+}
+
+.lineup-status-toggle :deep(.q-btn--active) {
+  z-index: 1;
+  opacity: 1;
+  filter: brightness(1.2) saturate(1.15);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6), 0 0 10px currentColor;
+}
+
+.lineup-status-toggle :deep(.q-btn--active .q-btn__content) {
+  font-weight: 800;
+}
+
+@media (max-width: 700px) {
+  .lineup-team-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lineup-player-row {
+    grid-template-columns: minmax(90px, 1fr) minmax(0, 1.8fr);
+    gap: 6px;
+  }
+
+  .lineup-status-toggle :deep(.q-btn) {
+    font-size: 0.64rem;
+    padding: 0 3px;
+  }
 }
 
 /* Sports Flags Indicators & Badges */

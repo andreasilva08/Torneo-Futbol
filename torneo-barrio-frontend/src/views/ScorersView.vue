@@ -1,9 +1,18 @@
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import { useQuasar } from 'quasar'
 import { useTournamentStore } from '@/stores/tournament'
+import ImagePreview from '@/components/ImagePreview.vue'
+import { getDefaultTeamLogo } from '@/utils/defaultAssets'
+import { downloadElementAsPng } from '@/utils/downloadElementAsPng'
+import { exportTournamentExcel } from '@/utils/exportTournamentExcel'
 
 const store = useTournamentStore()
+const $q = useQuasar()
+const exportRef = ref(null)
+const exportingPng = ref(false)
+const exportingExcel = ref(false)
 
 const podiumScorers = computed(() => [
   { rank: 2, scorer: store.scorers[1], rankClass: 'sport-podium-card--2', medal: '🥈' },
@@ -11,8 +20,39 @@ const podiumScorers = computed(() => [
   { rank: 3, scorer: store.scorers[2], rankClass: 'sport-podium-card--3', medal: '🥉' },
 ].filter((item) => item.scorer))
 
+const handleExportExcel = async () => {
+  exportingExcel.value = true
+  try {
+    await exportTournamentExcel(store, 'torneo-barrio-goleadores.xlsx')
+    $q.notify({ type: 'positive', message: 'Archivo Excel (.xlsx) exportado exitosamente.' })
+  } catch (error) {
+    $q.notify({ type: 'negative', message: error.message || 'Error al exportar a Excel.' })
+  } finally {
+    exportingExcel.value = false
+  }
+}
+
+const downloadPng = async () => {
+  const exportElement = exportRef.value?.$el || exportRef.value
+  if (!exportElement) return
+  exportingPng.value = true
+  try {
+    await downloadElementAsPng(exportElement, 'tabla-lideres-de-goleo.png')
+    $q.notify({ type: 'positive', message: 'Imagen PNG descargada con éxito.' })
+  } catch (error) {
+    $q.notify({ type: 'negative', message: error.message || 'Error al descargar la imagen.' })
+  } finally {
+    exportingPng.value = false
+  }
+}
+
 onMounted(async () => {
-  await store.fetchTopScorers()
+  await Promise.all([
+    store.fetchTopScorers(),
+    store.fetchStandings(),
+    store.fetchTopAssists(),
+    store.fetchGoalkeepersStats(),
+  ])
 })
 </script>
 
@@ -28,6 +68,26 @@ onMounted(async () => {
           <div class="sport-page-header__eyebrow">ESTADÍSTICAS INDIVIDUALES · TEMPORADA 2026</div>
           <h1 class="sport-page-header__title">Líderes de Goleo</h1>
         </div>
+      </div>
+
+      <div class="row items-center q-gutter-sm flex-wrap">
+        <q-btn
+          outline
+          color="secondary"
+          icon="image"
+          label="Descargar Tabla en Imagen (PNG)"
+          :loading="exportingPng"
+          :disable="!store.scorers.length"
+          @click="downloadPng"
+        />
+        <q-btn
+          outline
+          color="primary"
+          icon="table_view"
+          label="Exportar Excel (.xlsx)"
+          :loading="exportingExcel"
+          @click="handleExportExcel"
+        />
       </div>
     </div>
 
@@ -59,12 +119,29 @@ onMounted(async () => {
 
         <!-- Avatar -->
         <div class="podium-avatar-box" :class="`podium-avatar-box--${item.rank}`">
-          {{ item.scorer.player?.charAt(0)?.toUpperCase() || 'J' }}
+          <ImagePreview
+            :src="item.scorer.playerPhotoUrl || '/images/default-avatar.svg'"
+            fallback="/images/default-avatar.svg"
+            :alt="`Foto de ${item.scorer.player}`"
+            width="100%"
+            height="100%"
+          />
         </div>
 
         <!-- Player info -->
         <div class="podium-player-name">{{ item.scorer.player }}</div>
-        <div class="podium-team-name">{{ item.scorer.team }}</div>
+        <div class="row items-center justify-center gap-xs q-mt-xs">
+          <div class="sport-crest-container stats-team-crest" style="width: 20px; height: 20px;">
+            <ImagePreview
+              :src="item.scorer.teamLogoUrl || getDefaultTeamLogo({ _id: item.scorer.teamId, name: item.scorer.team })"
+              :fallback="getDefaultTeamLogo({ _id: item.scorer.teamId, name: item.scorer.team })"
+              :alt="`Escudo de ${item.scorer.team}`"
+              width="18px"
+              height="18px"
+            />
+          </div>
+          <div class="podium-team-name">{{ item.scorer.team }}</div>
+        </div>
 
         <!-- Score / Goals -->
         <div class="podium-score-pill">
@@ -75,6 +152,7 @@ onMounted(async () => {
     </div>
 
     <!-- FULL SCORERS TABLE -->
+    <div ref="exportRef" class="stats-export-surface">
     <q-card flat class="sports-panel-card">
       <q-card-section class="q-pa-lg">
         <div class="row items-center justify-between q-mb-md">
@@ -93,6 +171,7 @@ onMounted(async () => {
           row-key="playerId"
           flat
           hide-pagination
+          :pagination="{ rowsPerPage: 0 }"
           class="scorers-sports-table"
         >
           <!-- POSITION -->
@@ -114,14 +193,36 @@ onMounted(async () => {
           <!-- PLAYER -->
           <template #body-cell-player="props">
             <q-td :props="props">
-              <span class="text-weight-bold text-white">{{ props.row.player }}</span>
+              <div class="stats-person-cell">
+                <div class="sport-crest-container stats-person-avatar">
+                  <ImagePreview
+                    :src="props.row.playerPhotoUrl || '/images/default-avatar.svg'"
+                    fallback="/images/default-avatar.svg"
+                    :alt="`Foto de ${props.row.player}`"
+                    width="34px"
+                    height="34px"
+                  />
+                </div>
+                <span class="text-weight-bold text-white">{{ props.row.player }}</span>
+              </div>
             </q-td>
           </template>
 
           <!-- TEAM -->
           <template #body-cell-team="props">
             <q-td :props="props">
-              <span class="text-grey-4">{{ props.row.team }}</span>
+              <div class="stats-person-cell">
+                <div class="sport-crest-container stats-team-crest">
+                  <ImagePreview
+                    :src="props.row.teamLogoUrl || getDefaultTeamLogo({ _id: props.row.teamId, name: props.row.team })"
+                    :fallback="getDefaultTeamLogo({ _id: props.row.teamId, name: props.row.team })"
+                    :alt="`Escudo de ${props.row.team}`"
+                    width="24px"
+                    height="24px"
+                  />
+                </div>
+                <span class="text-grey-4">{{ props.row.team }}</span>
+              </div>
             </q-td>
           </template>
 
@@ -140,6 +241,7 @@ onMounted(async () => {
         </div>
       </q-card-section>
     </q-card>
+    </div>
   </div>
 </template>
 
@@ -277,6 +379,32 @@ onMounted(async () => {
   font-weight: 900;
   color: #ffffff;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.podium-avatar-box :deep(.image-preview),
+.podium-avatar-box :deep(.image-preview__image) {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.stats-person-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.stats-person-avatar {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+}
+
+.stats-team-crest {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
 }
 
 .podium-avatar-box--1 {

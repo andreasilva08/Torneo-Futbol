@@ -243,6 +243,8 @@ const createPlayer = async (req, res) => {
       status,
       condicion,
       photoUrl,
+      photo,
+      foto_url,
       goals,
       goles,
       assists,
@@ -288,7 +290,7 @@ const createPlayer = async (req, res) => {
       equipo: equipoName || '',
       status: playerStatus,
       condicion: playerStatus,
-      photoUrl: photoUrl || '',
+      photoUrl: photoUrl || photo || foto_url || '',
       goals: playerGoals,
       goles: playerGoals,
       assists: playerAssists,
@@ -314,69 +316,130 @@ const createPlayer = async (req, res) => {
 // @route   PUT /api/players/:id
 const updatePlayer = async (req, res) => {
   try {
-    const body = { ...req.body };
+    const input = req.body && typeof req.body === 'object' ? req.body : {};
+    const currentPlayer = await Player.findById(req.params.id);
+    if (!currentPlayer) {
+      return res.status(404).json({ message: 'Jugador no encontrado para actualizar' });
+    }
 
-    if (body.name || body.nombre) {
-      body.name = body.name || body.nombre;
+    const firstField = (...fields) => fields.find((field) => Object.prototype.hasOwnProperty.call(input, field));
+    const body = {};
+
+    const nameField = firstField('name', 'nombre');
+    if (nameField) {
+      body.name = String(input[nameField] ?? '').trim();
       body.nombre = body.name;
     }
-    if (body.number !== undefined || body.dorsal !== undefined) {
-      body.number = body.number !== undefined ? Number(body.number) : Number(body.dorsal);
-      body.dorsal = body.number;
-    }
-    if (body.position || body.posicion) {
-      body.position = body.position || body.posicion;
-      body.posicion = body.position;
-    }
-    if (body.status || body.condicion) {
-      body.status = (body.status || body.condicion).toUpperCase();
-      body.condicion = body.status;
+
+    const numberField = firstField('number', 'dorsal');
+    if (numberField) {
+      const number = Number(input[numberField]);
+      if (!Number.isInteger(number) || number < 0 || number > 99) {
+        return res.status(400).json({ message: 'El dorsal debe ser un número entero entre 0 y 99' });
+      }
+      body.number = number;
+      body.dorsal = number;
     }
 
-    if (body.goals !== undefined || body.goles !== undefined) {
-      const g = Number(body.goals !== undefined ? body.goals : body.goles);
-      body.goals = Math.max(0, g);
-      body.goles = body.goals;
-    }
-    if (body.assists !== undefined || body.asistencias !== undefined) {
-      const a = Number(body.assists !== undefined ? body.assists : body.asistencias);
-      body.assists = Math.max(0, a);
-      body.asistencias = body.assists;
-    }
-    if (body.yellowCards !== undefined || body.tarjetasAmarillas !== undefined) {
-      const y = Number(body.yellowCards !== undefined ? body.yellowCards : body.tarjetasAmarillas);
-      body.yellowCards = Math.max(0, y);
-      body.tarjetasAmarillas = body.yellowCards;
-    }
-    if (body.redCards !== undefined || body.tarjetasRojas !== undefined) {
-      const r = Number(body.redCards !== undefined ? body.redCards : body.tarjetasRojas);
-      body.redCards = Math.max(0, r);
-      body.tarjetasRojas = body.redCards;
+    const positions = ['Portero', 'Defensa', 'Mediocampista', 'Delantero'];
+    const positionField = firstField('position', 'posicion');
+    if (positionField && String(input[positionField] ?? '').trim()) {
+      const requestedPosition = String(input[positionField]).trim();
+      const position = positions.find((value) => value.toLowerCase() === requestedPosition.toLowerCase());
+      if (!position) return res.status(400).json({ message: 'La posición seleccionada no es válida' });
+      body.position = position;
+      body.posicion = position;
     }
 
-    if (body.team) {
-      const teamExists = await Team.findById(body.team);
-      if (teamExists) {
-        body.equipo = teamExists.name || teamExists.nombre;
+    const statuses = ['TITULAR', 'SUPLENTE', 'LESIONADO', 'SANCIONADO_ROJA', 'SANCIONADO_AMARILLAS'];
+    const statusField = firstField('status', 'condicion');
+    if (statusField && String(input[statusField] ?? '').trim()) {
+      const requestedStatus = String(input[statusField]).trim().toUpperCase();
+      if (!statuses.includes(requestedStatus)) {
+        return res.status(400).json({ message: 'La condición seleccionada no es válida' });
+      }
+      body.status = requestedStatus;
+      body.condicion = requestedStatus;
+    }
+
+    const teamField = firstField('team', 'teamId');
+    let targetTeamId = currentPlayer.team;
+    if (teamField) {
+      const requestedTeamId = input[teamField];
+      if (requestedTeamId === null || requestedTeamId === '') {
+        targetTeamId = null;
+        body.team = null;
+        body.equipo = '';
+      } else {
+        const teamId = typeof requestedTeamId === 'object'
+          ? requestedTeamId._id || requestedTeamId.id
+          : requestedTeamId;
+        const team = await Team.findById(teamId);
+        if (!team) return res.status(404).json({ message: 'El equipo seleccionado no existe' });
+        targetTeamId = team._id;
+        body.team = team._id;
+        body.equipo = team.name || team.nombre || '';
+      }
+    }
+
+    const photoField = firstField('photoUrl', 'photo', 'foto_url');
+    if (photoField) {
+      const photoUrl = String(input[photoField] ?? '').trim();
+      if (photoUrl) {
+        const isLocalImage = photoUrl.startsWith('/') || photoUrl.startsWith('data:image/');
+        let isHttpImage = false;
+        try {
+          const parsedUrl = new URL(photoUrl);
+          isHttpImage = ['http:', 'https:'].includes(parsedUrl.protocol) && Boolean(parsedUrl.hostname);
+        } catch {
+          isHttpImage = false;
+        }
+        if (!isLocalImage && !isHttpImage) {
+          return res.status(400).json({ message: 'La URL de foto no es válida' });
+        }
+      }
+      body.photoUrl = photoUrl;
+    }
+
+    const numericFields = [
+      { aliases: ['goals', 'goles'], fields: ['goals', 'goles'] },
+      { aliases: ['assists', 'asistencias'], fields: ['assists', 'asistencias'] },
+      { aliases: ['yellowCards', 'tarjetasAmarillas'], fields: ['yellowCards', 'tarjetasAmarillas'] },
+      { aliases: ['redCards', 'tarjetasRojas'], fields: ['redCards', 'tarjetasRojas'] },
+    ];
+    for (const definition of numericFields) {
+      const field = firstField(...definition.aliases);
+      if (!field) continue;
+      const value = Number(input[field]);
+      if (!Number.isFinite(value) || value < 0) {
+        return res.status(400).json({ message: `El valor de ${field} debe ser un número mayor o igual a 0` });
+      }
+      for (const targetField of definition.fields) body[targetField] = value;
+    }
+
+    const finalNumber = body.number ?? currentPlayer.number ?? currentPlayer.dorsal;
+    const shouldCheckNumber = Boolean(numberField || teamField);
+    if (shouldCheckNumber && targetTeamId && finalNumber !== null && finalNumber !== undefined) {
+      const numberExists = await Player.findOne({
+        team: targetTeamId,
+        number: finalNumber,
+        _id: { $ne: req.params.id },
+      });
+      if (numberExists) {
+        return res.status(400).json({ message: 'El dorsal ya pertenece a otro jugador' });
       }
     }
 
     const updatedPlayer = await Player.findByIdAndUpdate(
       req.params.id,
       body,
-      { new: true, runValidators: true }
+      { new: true, runValidators: true, context: 'query' },
     ).populate('team', 'name shortName logoUrl');
-
-    if (!updatedPlayer) {
-      return res.status(404).json({ message: 'Jugador no encontrado para actualizar' });
-    }
 
     res.status(200).json(formatPlayer(updatedPlayer));
   } catch (error) {
     if (error.code === 11000) {
-      return res.status(400).json({
-        message: 'El número de camiseta ya está asignado a otro jugador en este equipo',
-      });
+      return res.status(400).json({ message: 'El dorsal ya pertenece a otro jugador' });
     }
     res.status(400).json({ message: 'Error al actualizar el jugador', error: error.message });
   }

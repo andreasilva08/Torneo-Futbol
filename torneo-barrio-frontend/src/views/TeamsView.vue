@@ -69,6 +69,19 @@ const getTeamStandings = (teamId) => {
   return store.standings.find((s) => s._id === teamId) || null
 }
 
+const getMatchTeamId = (team) => String(team && typeof team === 'object' ? team._id || team.id || '' : team || '')
+const liveMatchStatuses = new Set(['IN_PROGRESS', 'LIVE', 'EN VIVO', 'INICIADO'])
+const isTeamInLiveMatch = (team) => store.matches.some((match) => (
+  liveMatchStatuses.has(String(match.status || '').trim().toUpperCase()) &&
+  [match.homeTeam, match.awayTeam].some((matchTeam) => getMatchTeamId(matchTeam) === getMatchTeamId(team))
+))
+const notifyTeamLiveEditBlocked = () => {
+  $q.notify({
+    type: 'warning',
+    message: 'No se puede editar la información de un equipo o jugador mientras está disputando un partido en vivo.',
+  })
+}
+
 const filteredTeams = computed(() => {
   const value = search.value.trim().toLowerCase()
 
@@ -103,6 +116,10 @@ const openCreateDialog = () => {
 }
 
 const openEditDialog = (team) => {
+  if (isTeamInLiveMatch(team)) {
+    notifyTeamLiveEditBlocked()
+    return
+  }
   Object.assign(form, {
     name: team.name,
     shortName: team.shortName || team.name?.substring(0, 4).toUpperCase(),
@@ -134,6 +151,13 @@ const autoGenerateShortName = (name) => {
 }
 
 const saveTeam = async () => {
+  if (editingId.value) {
+    const editingTeam = store.teams.find((team) => String(team._id || team.id) === String(editingId.value))
+    if (editingTeam && isTeamInLiveMatch(editingTeam)) {
+      notifyTeamLiveEditBlocked()
+      return
+    }
+  }
   if (!form.name.trim()) {
     $q.notify({ type: 'warning', message: 'El nombre del equipo es obligatorio.' })
     return
@@ -311,7 +335,7 @@ onMounted(async () => {
                         </q-item-section>
                         <q-item-section>Ver Plantel</q-item-section>
                       </q-item>
-                      <q-item clickable @click="openEditDialog(team)">
+                      <q-item clickable :disable="isTeamInLiveMatch(team)" @click="openEditDialog(team)">
                         <q-item-section avatar style="min-width: 30px;">
                           <q-icon name="edit" color="secondary" size="18px" />
                         </q-item-section>
@@ -445,7 +469,7 @@ onMounted(async () => {
           <template #body-cell-actions="props">
             <q-td :props="props" class="text-right">
               <q-btn flat round dense icon="visibility" color="primary" :to="`/equipos/${props.row._id}`" />
-              <q-btn flat round dense icon="edit" color="secondary" @click="openEditDialog(props.row)" />
+              <q-btn flat round dense icon="edit" color="secondary" :disable="isTeamInLiveMatch(props.row)" @click="openEditDialog(props.row)" />
               <q-btn flat round dense icon="delete" color="negative" @click="removeTeam(props.row._id, props.row.name)" />
             </q-td>
           </template>

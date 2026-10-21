@@ -46,6 +46,18 @@ const playerSchema = new mongoose.Schema(
       enum: ['TITULAR', 'SUPLENTE', 'LESIONADO', 'SANCIONADO_ROJA', 'SANCIONADO_AMARILLAS'],
       default: 'TITULAR',
     },
+    suspendedUntilMatchday: {
+      type: Number,
+      default: null,
+    },
+    suspensionReturnDate: {
+      type: Date,
+      default: null,
+    },
+    recoveryDate: {
+      type: Date,
+      default: null,
+    },
     condicion: {
       type: String,
       default: 'TITULAR',

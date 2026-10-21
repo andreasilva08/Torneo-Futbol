@@ -33,7 +33,7 @@ const formatMatch = (matchDoc) => {
 };
 
 const TEAM_FIELDS = 'name nombre shortName siglas logoUrl escudo_url stadium cancha estadio';
-const PLAYER_FIELDS = 'name nombre number dorsal photoUrl';
+const PLAYER_FIELDS = 'name nombre number dorsal photoUrl status condicion recoveryDate suspendedUntilMatchday suspensionReturnDate';
 const MATCH_STATUSES = ['SCHEDULED', 'IN_PROGRESS', 'FINISHED', 'SUSPENDED', 'POSTPONED'];
 const LIVE_MATCH_STATUSES = new Set(['IN_PROGRESS', 'LIVE', 'EN VIVO', 'INICIADO']);
 const RESCHEDULED_STATUSES = ['SUSPENDED', 'POSTPONED'];
@@ -146,12 +146,114 @@ const findMatchdayPrerequisiteError = async (matchday) => {
         : null;
 };
 
-const isUnavailablePlayerStatus = (player) => {
+const isUnavailablePlayerStatus = (player, matchday) => {
     const status = String(player?.status || player?.condicion || '').trim().toUpperCase();
-    return status === 'LESIONADO' || status === 'SUSPENDIDO' || status.startsWith('SANCIONADO');
+    if (status === 'LESIONADO') {
+        return !player.recoveryDate || new Date(player.recoveryDate) > new Date();
+    }
+    if (status === 'SUSPENDIDO') return true;
+    if (status.startsWith('SANCIONADO')) {
+        return player.suspendedUntilMatchday === null || player.suspendedUntilMatchday === undefined ||
+            Number(matchday) <= Number(player.suspendedUntilMatchday);
+    }
+    return false;
 };
 
 const sameId = (first, second) => String(first || '') === String(second || '');
+
+const validateLineup = async ({ entries, benchEntries = [], team, matchday }) => {
+    if (!Array.isArray(entries)) {
+        return { error: 'Selecciona la alineación de ambos equipos antes de iniciar el partido.' };
+    }
+
+    if (!Array.isArray(benchEntries)) {
+        return { error: 'La lista de suplentes no es válida.' };
+    }
+
+    const normalizeEntry = (entry, isStarter) => ({
+        player: String(entry?.player?._id || entry?.player?.id || entry?.player || entry?._id || entry?.id || entry || ''),
+        isStarter: typeof entry === 'object' && entry !== null && entry.isStarter !== undefined
+            ? Boolean(entry.isStarter)
+            : isStarter,
+    });
+    const normalizedEntries = [
+        ...entries.map((entry) => normalizeEntry(entry, true)),
+        ...benchEntries.map((entry) => normalizeEntry(entry, false)),
+    ];
+    const playerIds = normalizedEntries.map((entry) => entry.player);
+    if (playerIds.some((playerId) => !playerId) || new Set(playerIds).size !== playerIds.length) {
+        return { error: 'La alineación contiene jugadores inválidos o repetidos.' };
+    }
+    if (normalizedEntries.filter((entry) => entry.isStarter).length !== 11) {
+        return { error: 'Cada equipo debe confirmar exactamente 11 titulares.' };
+    }
+
+    const players = await Player.find({ _id: { $in: playerIds } })
+        .select('team equipo status condicion position posicion recoveryDate suspendedUntilMatchday')
+        .lean();
+    if (players.length !== playerIds.length) {
+        return { error: 'Uno de los jugadores de la alineación ya no existe.' };
+    }
+
+    const playersById = new Map(players.map((player) => [String(player._id), player]));
+    const teamId = String(team._id);
+    const teamDisplayName = team.name || team.nombre || 'seleccionado';
+
+    const isGk = (p) => {
+        // Busca posición en todas las rutas posibles del objeto (plano o anidado/populado)
+        const pos = String(
+            p?.position || p?.posicion ||
+            p?.player?.position || p?.player?.posicion || ''
+        ).trim().toLowerCase();
+        return (
+            pos.includes('port') ||
+            pos.includes('arquero') ||
+            pos.includes('goalkeeper') ||
+            pos.includes('gk') ||
+            pos === 'po'
+        );
+    };
+    const starterGkCount = normalizedEntries.filter((entry) => entry.isStarter && isGk(playersById.get(entry.player) || {})).length;
+    if (starterGkCount !== 1) {
+        return { error: `El equipo ${teamDisplayName} debe tener exactamente 1 Portero en estado TITULAR (Verde).` };
+    }
+    const teamName = String(team.name || team.nombre || '').trim().toLowerCase();
+    const now = new Date();
+
+    for (const entry of normalizedEntries) {
+        const player = playersById.get(entry.player);
+        const playerTeamId = String(player.team?._id || player.team || '');
+        const playerTeamName = String(player.equipo || '').trim().toLowerCase();
+        if (playerTeamId !== teamId && (!teamName || playerTeamName !== teamName)) {
+            return { error: 'Todos los jugadores de la alineación deben pertenecer a su equipo.' };
+        }
+
+        const status = String(player.condicion || player.status || 'TITULAR').trim().toUpperCase();
+        const injuryActive = status === 'LESIONADO' &&
+            (!player.recoveryDate || new Date(player.recoveryDate) > now);
+        const suspensionActive = status.startsWith('SANCIONADO') && (
+            player.suspendedUntilMatchday === null ||
+            player.suspendedUntilMatchday === undefined ||
+            Number(matchday) <= Number(player.suspendedUntilMatchday)
+        );
+        if (injuryActive) {
+            return { error: 'No se puede alinear a un jugador que sigue lesionado.' };
+        }
+        if (suspensionActive) {
+            return { error: 'No se puede alinear a un jugador que sigue suspendido.' };
+        }
+        if (!['TITULAR', 'SUPLENTE', 'LESIONADO'].includes(status) && !status.startsWith('SANCIONADO')) {
+            return { error: 'La alineación contiene un jugador no disponible.' };
+        }
+    }
+
+    return {
+        entries: normalizedEntries.map((entry) => ({
+            ...entry,
+            isOnField: entry.isStarter,
+        })),
+    };
+};
 
 const createDoubleRoundRobinFixtures = (teamIds) => {
     const rotation = [...teamIds];
@@ -384,7 +486,9 @@ const getMatchById = async (req, res) => {
             .populate('events.player', PLAYER_FIELDS)
             .populate('events.playerIn', PLAYER_FIELDS)
             .populate('events.playerOut', PLAYER_FIELDS)
-            .populate('events.team', TEAM_FIELDS);
+            .populate('events.team', TEAM_FIELDS)
+            .populate('homeLineup.player', PLAYER_FIELDS)
+            .populate('awayLineup.player', PLAYER_FIELDS);
 
         if (!match) {
             return res.status(404).json({ message: 'Partido no encontrado' });
@@ -647,7 +751,19 @@ const deleteMatch = async (req, res) => {
 // Función para actualizar resultado y goles
 const updateMatchResult = async (req, res) => {
     try {
-        const { homeScore, awayScore, status, goals } = req.body;
+        const {
+            homeScore,
+            awayScore,
+            status,
+            goals,
+            lineup,
+            homeTeam,
+            awayTeam,
+            homeLineup,
+            awayLineup,
+            homeBench = [],
+            awayBench = [],
+        } = req.body;
 
         const match = await Match.findById(req.params.id);
         if (!match) {
@@ -657,7 +773,14 @@ const updateMatchResult = async (req, res) => {
             return res.status(409).json({ message: 'El partido finalizado es inmutable y no se puede modificar.' });
         }
 
+        const getReferenceId = (value) => String(value?._id || value?.id || value || '').trim();
+        if ((homeTeam !== undefined && getReferenceId(homeTeam) !== String(match.homeTeam)) ||
+            (awayTeam !== undefined && getReferenceId(awayTeam) !== String(match.awayTeam))) {
+            return res.status(400).json({ message: 'Los equipos del payload no coinciden con este partido.' });
+        }
+
         const normalizedStatus = status === undefined ? match.status : String(status).trim().toUpperCase();
+        let lineupPlayersToSync = [];
         if (status !== undefined && !MATCH_STATUSES.includes(normalizedStatus)) {
             return res.status(400).json({ message: 'El estado seleccionado no es válido' });
         }
@@ -667,6 +790,56 @@ const updateMatchResult = async (req, res) => {
         if (normalizedStatus === 'IN_PROGRESS') {
             const prerequisiteError = await findMatchdayPrerequisiteError(match.matchday);
             if (prerequisiteError) return res.status(409).json({ message: prerequisiteError });
+        }
+
+        const isStartingMatch = normalizedStatus === 'IN_PROGRESS' &&
+            String(match.status).toUpperCase() !== 'IN_PROGRESS';
+        const shouldValidateLineups = homeLineup !== undefined || awayLineup !== undefined ||
+            (isStartingMatch && (!match.homeLineup.length || !match.awayLineup.length));
+        if (shouldValidateLineups) {
+            if (homeLineup === undefined || awayLineup === undefined) {
+                return res.status(400).json({ message: 'Selecciona la alineación de ambos equipos antes de iniciar el partido.' });
+            }
+            const [homeTeam, awayTeam] = await Promise.all([
+                Team.findById(match.homeTeam),
+                Team.findById(match.awayTeam),
+            ]);
+            const [homeValidation, awayValidation] = await Promise.all([
+                validateLineup({ entries: homeLineup, benchEntries: homeBench, team: homeTeam, matchday: match.matchday }),
+                validateLineup({ entries: awayLineup, benchEntries: awayBench, team: awayTeam, matchday: match.matchday }),
+            ]);
+            if (homeValidation.error || awayValidation.error) {
+                return res.status(400).json({ message: homeValidation.error || awayValidation.error });
+            }
+            const expectedStarterIds = [...homeValidation.entries, ...awayValidation.entries]
+                .filter((entry) => entry.isStarter)
+                .map((entry) => String(entry.player))
+                .sort();
+            if (lineup !== undefined) {
+                if (!Array.isArray(lineup)) {
+                    return res.status(400).json({ message: 'La lista global de titulares no es válida.' });
+                }
+                const receivedStarterIds = lineup.map((entry) => String(entry?._id || entry?.id || entry || '').trim()).sort();
+                if (receivedStarterIds.length !== expectedStarterIds.length ||
+                    receivedStarterIds.some((playerId, index) => playerId !== expectedStarterIds[index])) {
+                    return res.status(400).json({ message: 'La lista global no coincide con los titulares seleccionados.' });
+                }
+            }
+            match.homeLineup = homeValidation.entries;
+            match.awayLineup = awayValidation.entries;
+            match.lineup = [
+                ...homeValidation.entries.map((entry) => ({
+                    ...entry,
+                    team: match.homeTeam,
+                    status: entry.isStarter ? 'TITULAR' : 'SUPLENTE',
+                })),
+                ...awayValidation.entries.map((entry) => ({
+                    ...entry,
+                    team: match.awayTeam,
+                    status: entry.isStarter ? 'TITULAR' : 'SUPLENTE',
+                })),
+            ];
+            lineupPlayersToSync = match.lineup;
         }
         if (normalizedStatus === 'FINISHED' && String(match.status).toUpperCase() !== 'IN_PROGRESS') {
             return res.status(400).json({ message: 'El partido debe estar en vivo antes de poder finalizarlo.' });
@@ -707,7 +880,7 @@ const updateMatchResult = async (req, res) => {
                             ? match.goals.id(goal._id)
                             : match.goals[index];
                         const previousPlayer = previousGoal?.player;
-                        if (isUnavailablePlayerStatus(playerDoc) && !sameId(previousPlayer, goal.player)) {
+                        if (isUnavailablePlayerStatus(playerDoc, match.matchday) && !sameId(previousPlayer, goal.player)) {
                             return res.status(400).json({
                                 message: 'No se puede seleccionar un jugador lesionado o suspendido',
                             });
@@ -763,15 +936,27 @@ const updateMatchResult = async (req, res) => {
         if (status !== undefined) match.status = String(status).trim().toUpperCase();
 
         await match.save();
+        if (lineupPlayersToSync.length) {
+            await Player.bulkWrite(lineupPlayersToSync.map((entry) => ({
+                updateOne: {
+                    filter: { _id: entry.player },
+                    update: { $set: { status: entry.status, condicion: entry.status } },
+                },
+            })));
+        }
 
         await match.populate('homeTeam', TEAM_FIELDS);
         await match.populate('awayTeam', TEAM_FIELDS);
         await match.populate('goals.player', PLAYER_FIELDS);
         await match.populate('goals.team', TEAM_FIELDS);
+        await match.populate('homeLineup.player', PLAYER_FIELDS);
+        await match.populate('awayLineup.player', PLAYER_FIELDS);
+        await match.populate('lineup.team', TEAM_FIELDS);
+        await match.populate('lineup.player', PLAYER_FIELDS);
 
         res.status(200).json(formatMatch(match));
     } catch (error) {
-        res.status(400).json({ message: 'Error al registrar el resultado', error: error.message });
+        res.status(400).json({ message: error.message });
     }
 };
 
@@ -793,6 +978,17 @@ const updateMatchEvents = async (req, res) => {
             Team.findById(match.homeTeam),
             Team.findById(match.awayTeam),
         ]);
+
+        const homeLineup = match.homeLineup.map((entry) => ({
+            player: entry.player,
+            isStarter: Boolean(entry.isStarter),
+            isOnField: Boolean(entry.isStarter),
+        }));
+        const awayLineup = match.awayLineup.map((entry) => ({
+            player: entry.player,
+            isStarter: Boolean(entry.isStarter),
+            isOnField: Boolean(entry.isStarter),
+        }));
 
         const sanitizedEvents = [];
 
@@ -816,6 +1012,33 @@ const updateMatchEvents = async (req, res) => {
             const previousEvent = event._id
                 ? match.events.id(event._id)
                 : match.events[index];
+            const isSubstitution = evType === 'SUBSTITUTION' || evType.includes('SUSTITUCION');
+            const isInjury = evType === 'INJURY' || evType.includes('LESION');
+            if (isSubstitution || isInjury) {
+                const outgoingId = String(event.playerOut || event.player || '');
+                const incomingId = String(event.playerIn || '');
+                const eventLineup = eventTeamId === match.homeTeam.toString() ? homeLineup : awayLineup;
+                const outgoingEntry = eventLineup.find((entry) => sameId(entry.player, outgoingId));
+                const incomingEntry = eventLineup.find((entry) => sameId(entry.player, incomingId));
+                if (!eventTeamId || !outgoingId || !incomingId || !outgoingEntry?.isOnField) {
+                    return res.status(400).json({ message: 'El jugador que sale debe estar actualmente en cancha.' });
+                }
+                if (!incomingEntry || incomingEntry.isStarter || incomingEntry.isOnField) {
+                    return res.status(400).json({ message: 'El jugador que entra debe ser un suplente disponible de la banca.' });
+                }
+                outgoingEntry.isOnField = false;
+                incomingEntry.isOnField = true;
+            }
+
+            if (evType === 'RED_CARD' || evType.includes('ROJA')) {
+                const expelledId = String(event.player || '');
+                for (const entry of [...homeLineup, ...awayLineup]) {
+                    if (sameId(entry.player, expelledId)) entry.isOnField = false;
+                }
+            }
+
+            const recoveryDuration = Number(event.recoveryDuration || previousEvent?.recoveryDuration || 0);
+            const recoveryUnit = String(event.recoveryUnit || previousEvent?.recoveryUnit || 'DAYS').toUpperCase();
             const selectedPlayerIds = [
                 ['player', event.player],
                 ['playerIn', event.playerIn],
@@ -827,7 +1050,7 @@ const updateMatchEvents = async (req, res) => {
                 if (!selectedPlayer) {
                     return res.status(400).json({ message: 'Uno de los jugadores seleccionados no existe' });
                 }
-                if (isUnavailablePlayerStatus(selectedPlayer)) {
+                if (isUnavailablePlayerStatus(selectedPlayer, match.matchday)) {
                     return res.status(400).json({
                         message: 'No se puede seleccionar un jugador lesionado o suspendido',
                     });
@@ -847,16 +1070,50 @@ const updateMatchEvents = async (req, res) => {
                     if (evType === 'RED_CARD' || evType.includes('ROJA')) {
                         playerDoc.status = 'SANCIONADO_ROJA';
                         playerDoc.condicion = 'SANCIONADO_ROJA';
+                        playerDoc.suspendedUntilMatchday = Number(match.matchday) + 1;
+                        const returnMatch = await Match.findOne({
+                            _id: { $ne: match._id },
+                            matchday: { $gt: playerDoc.suspendedUntilMatchday },
+                            $or: [
+                                { homeTeam: targetTeam?._id || playerDoc.team },
+                                { awayTeam: targetTeam?._id || playerDoc.team },
+                            ],
+                        }).sort({ matchday: 1, date: 1 }).select('date').lean();
+                        playerDoc.suspensionReturnDate = returnMatch?.date || null;
                     } else if (evType === 'YELLOW_CARD' || evType.includes('AMARILLA')) {
                         const currentCount = (yellowCounts.get(playerDoc._id.toString()) || 0) + 1;
                         yellowCounts.set(playerDoc._id.toString(), currentCount);
                         if (currentCount >= 2) {
                             playerDoc.status = 'SANCIONADO_AMARILLAS';
                             playerDoc.condicion = 'SANCIONADO_AMARILLAS';
+                            playerDoc.suspendedUntilMatchday = Number(match.matchday) + 1;
                         }
-                    } else if (evType === 'INJURY' || evType.includes('LESION')) {
+                    } else if (isInjury) {
+                        if (recoveryDuration && ![ 'DAYS', 'WEEKS' ].includes(recoveryUnit)) {
+                            return res.status(400).json({ message: 'La unidad de recuperación debe ser días o semanas.' });
+                        }
+                        if (recoveryDuration < 1) {
+                            return res.status(400).json({ message: 'Indica una duración de recuperación válida.' });
+                        }
                         playerDoc.status = 'LESIONADO';
                         playerDoc.condicion = 'LESIONADO';
+                        if (recoveryDuration) {
+                            const hasUnchangedRecoveryPlan = event.recoveryDate && previousEvent &&
+                                Number(previousEvent.recoveryDuration) === recoveryDuration &&
+                                String(previousEvent.recoveryUnit || 'DAYS').toUpperCase() === recoveryUnit
+                                && !Number.isNaN(new Date(event.recoveryDate).getTime());
+                            const recoveryDate = hasUnchangedRecoveryPlan
+                                ? new Date(event.recoveryDate)
+                                : new Date();
+                            if (!hasUnchangedRecoveryPlan) {
+                                recoveryDate.setDate(recoveryDate.getDate() + recoveryDuration * (recoveryUnit === 'WEEKS' ? 7 : 1));
+                            }
+                            playerDoc.recoveryDate = recoveryDate;
+                            event.recoveryDate = recoveryDate;
+                        } else {
+                            playerDoc.recoveryDate = previousEvent?.recoveryDate || playerDoc.recoveryDate;
+                            event.recoveryDate = playerDoc.recoveryDate;
+                        }
                     }
 
                     await playerDoc.save();
@@ -864,11 +1121,12 @@ const updateMatchEvents = async (req, res) => {
             }
 
             // Si es sustitución por lesión y viene el jugador que sale (lesionado)
-            if (event.playerOut && (evType === 'INJURY' || evType.includes('LESION'))) {
+            if (event.playerOut && isInjury) {
                 const outDoc = await Player.findById(event.playerOut);
                 if (outDoc) {
                     outDoc.status = 'LESIONADO';
                     outDoc.condicion = 'LESIONADO';
+                    if (event.recoveryDate) outDoc.recoveryDate = event.recoveryDate;
                     await outDoc.save();
                 }
             }
@@ -882,11 +1140,22 @@ const updateMatchEvents = async (req, res) => {
                 playerIn: event.playerIn || null,
                 playerOut: event.playerOut || null,
                 injuryTime: event.injuryTime || '',
+                recoveryDuration: recoveryDuration || null,
+                recoveryUnit,
+                recoveryDate: event.recoveryDate || previousEvent?.recoveryDate || null,
                 description: event.description || '',
             });
         }
 
         match.events = sanitizedEvents;
+        match.homeLineup = homeLineup;
+        match.awayLineup = awayLineup;
+        const activePlayerIds = new Set([...homeLineup, ...awayLineup]
+            .filter((entry) => entry.isOnField)
+            .map((entry) => String(entry.player)));
+        for (const entry of match.lineup) {
+            entry.isOnField = activePlayerIds.has(String(entry.player));
+        }
         await match.save();
 
         await match.populate('homeTeam', TEAM_FIELDS);
@@ -897,6 +1166,10 @@ const updateMatchEvents = async (req, res) => {
         await match.populate('events.playerIn', PLAYER_FIELDS);
         await match.populate('events.playerOut', PLAYER_FIELDS);
         await match.populate('events.team', TEAM_FIELDS);
+        await match.populate('lineup.team', TEAM_FIELDS);
+        await match.populate('lineup.player', PLAYER_FIELDS);
+        await match.populate('homeLineup.player', PLAYER_FIELDS);
+        await match.populate('awayLineup.player', PLAYER_FIELDS);
 
         res.status(200).json(formatMatch(match));
     } catch (error) {

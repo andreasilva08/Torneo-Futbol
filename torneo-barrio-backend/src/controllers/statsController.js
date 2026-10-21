@@ -219,13 +219,17 @@ const getTopScorers = async (req, res) => {
 
         const teamName = teamObj ? getTeamName(teamObj) : (playerObj?.equipo || 'Sin equipo');
         const teamId = teamObj ? teamObj._id.toString() : null;
+        const teamLogoUrl = teamObj?.logoUrl || teamObj?.escudo_url || '';
+        const playerPhotoUrl = playerObj?.photoUrl || playerObj?.foto_url || '';
 
         if (!scorersMap.has(playerId)) {
           scorersMap.set(playerId, {
             playerId,
             player: playerName,
+            playerPhotoUrl,
             team: teamName,
             teamId,
+            teamLogoUrl,
             goals: 0,
           });
         }
@@ -243,18 +247,23 @@ const getTopScorers = async (req, res) => {
         let teamObj = p.team ? teamsById.get(p.team.toString()) : (p.equipo ? teamsByName.get(String(p.equipo).trim().toLowerCase()) : null);
         const teamName = teamObj ? getTeamName(teamObj) : (p.equipo || 'Sin equipo');
         const teamId = teamObj ? teamObj._id.toString() : null;
+        const teamLogoUrl = teamObj?.logoUrl || teamObj?.escudo_url || '';
 
         if (!scorersMap.has(pId)) {
           scorersMap.set(pId, {
             playerId: pId,
             player: pName,
+            playerPhotoUrl: p.photoUrl || p.foto_url || '',
             team: teamName,
             teamId,
+            teamLogoUrl,
             goals: manualGoals,
           });
         } else {
           const current = scorersMap.get(pId);
           current.goals = Math.max(current.goals, manualGoals);
+          current.playerPhotoUrl = current.playerPhotoUrl || p.photoUrl || p.foto_url || '';
+          current.teamLogoUrl = current.teamLogoUrl || teamLogoUrl;
         }
       }
     }
@@ -318,13 +327,17 @@ const getTopAssists = async (req, res) => {
 
       const teamName = teamObj ? getTeamName(teamObj) : (playerObj?.equipo || 'Sin equipo');
       const teamId = teamObj ? teamObj._id.toString() : null;
+      const teamLogoUrl = teamObj?.logoUrl || teamObj?.escudo_url || '';
+      const playerPhotoUrl = playerObj?.photoUrl || playerObj?.foto_url || '';
 
       if (!assistsMap.has(pId)) {
         assistsMap.set(pId, {
           playerId: pId,
           player: pName,
+          playerPhotoUrl,
           team: teamName,
           teamId,
+          teamLogoUrl,
           assists: 0,
         });
       }
@@ -364,18 +377,23 @@ const getTopAssists = async (req, res) => {
         let teamObj = p.team ? teamsById.get(p.team.toString()) : (p.equipo ? teamsByName.get(String(p.equipo).trim().toLowerCase()) : null);
         const teamName = teamObj ? getTeamName(teamObj) : (p.equipo || 'Sin equipo');
         const teamId = teamObj ? teamObj._id.toString() : null;
+        const teamLogoUrl = teamObj?.logoUrl || teamObj?.escudo_url || '';
 
         if (!assistsMap.has(pId)) {
           assistsMap.set(pId, {
             playerId: pId,
             player: pName,
+            playerPhotoUrl: p.photoUrl || p.foto_url || '',
             team: teamName,
             teamId,
+            teamLogoUrl,
             assists: manualAssists,
           });
         } else {
           const current = assistsMap.get(pId);
           current.assists = Math.max(current.assists, manualAssists);
+          current.playerPhotoUrl = current.playerPhotoUrl || p.photoUrl || p.foto_url || '';
+          current.teamLogoUrl = current.teamLogoUrl || teamLogoUrl;
         }
       }
     }
@@ -398,8 +416,30 @@ const getTopAssists = async (req, res) => {
 // @route   GET /api/stats/goalkeepers
 const getGoalkeepers = async (req, res) => {
   try {
-    const teams = await Team.find().lean();
-    const matches = await Match.find({ status: 'FINISHED' }).lean();
+    const [teams, matches, players] = await Promise.all([
+      Team.find().lean(),
+      Match.find({ status: 'FINISHED' }).lean(),
+      Player.find().lean(),
+    ]);
+
+    const teamsByName = new Map(teams.map((team) => [
+      String(team.name || team.nombre || '').trim().toLowerCase(),
+      team,
+    ]));
+    const goalkeepersByTeam = new Map(teams.map((team) => [team._id.toString(), []]));
+    for (const player of players) {
+      const position = String(player.position || player.posicion || '').trim().toLowerCase();
+      if (!position.includes('port') && !position.includes('arquero') && !position.includes('goalkeeper')) continue;
+      const playerTeamId = player.team ? String(player.team._id || player.team) : '';
+      const team = teams.find((item) => item._id.toString() === playerTeamId) ||
+        teamsByName.get(String(player.equipo || '').trim().toLowerCase());
+      if (!team) continue;
+      goalkeepersByTeam.get(team._id.toString()).push({
+        playerId: player._id.toString(),
+        player: getPlayerName(player),
+        photoUrl: player.photoUrl || player.foto_url || '',
+      });
+    }
 
     const teamStats = new Map(teams.map((team) => {
       const name = getTeamName(team);
@@ -411,6 +451,7 @@ const getGoalkeepers = async (req, res) => {
         team: name,
         shortName,
         logoUrl,
+        goalkeepers: goalkeepersByTeam.get(team._id.toString()) || [],
         matches: 0,
         goalsAgainst: 0,
         cleanSheets: 0,
