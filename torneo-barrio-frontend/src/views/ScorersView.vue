@@ -20,6 +20,9 @@ const podiumScorers = computed(() => [
   { rank: 3, scorer: store.scorers[2], rankClass: 'sport-podium-card--3', medal: '🥉' },
 ].filter((item) => item.scorer))
 
+const scorerPhoto = (scorer) => scorer?.playerPhotoUrl || scorer?.photoUrl || scorer?.foto_url || scorer?.photo || scorer?.image ||
+  scorer?.player?.photoUrl || scorer?.player?.foto_url || scorer?.player?.photo || scorer?.player?.image || '/images/default-avatar.svg'
+
 const handleExportExcel = async () => {
   exportingExcel.value = true
   try {
@@ -120,7 +123,7 @@ onMounted(async () => {
         <!-- Avatar -->
         <div class="podium-avatar-box" :class="`podium-avatar-box--${item.rank}`">
           <ImagePreview
-            :src="item.scorer.playerPhotoUrl || '/images/default-avatar.svg'"
+            :src="scorerPhoto(item.scorer)"
             fallback="/images/default-avatar.svg"
             :alt="`Foto de ${item.scorer.player}`"
             width="100%"
@@ -131,13 +134,13 @@ onMounted(async () => {
         <!-- Player info -->
         <div class="podium-player-name">{{ item.scorer.player }}</div>
         <div class="row items-center justify-center gap-xs q-mt-xs">
-          <div class="sport-crest-container stats-team-crest" style="width: 20px; height: 20px;">
+          <div class="sport-crest-container podium-team-crest">
             <ImagePreview
               :src="item.scorer.teamLogoUrl || getDefaultTeamLogo({ _id: item.scorer.teamId, name: item.scorer.team })"
               :fallback="getDefaultTeamLogo({ _id: item.scorer.teamId, name: item.scorer.team })"
               :alt="`Escudo de ${item.scorer.team}`"
-              width="18px"
-              height="18px"
+              width="26px"
+              height="26px"
             />
           </div>
           <div class="podium-team-name">{{ item.scorer.team }}</div>
@@ -196,11 +199,11 @@ onMounted(async () => {
               <div class="stats-person-cell">
                 <div class="sport-crest-container stats-person-avatar">
                   <ImagePreview
-                    :src="props.row.playerPhotoUrl || '/images/default-avatar.svg'"
+                    :src="scorerPhoto(props.row)"
                     fallback="/images/default-avatar.svg"
                     :alt="`Foto de ${props.row.player}`"
-                    width="34px"
-                    height="34px"
+                    width="40px"
+                    height="40px"
                   />
                 </div>
                 <span class="text-weight-bold text-white">{{ props.row.player }}</span>
@@ -386,6 +389,9 @@ onMounted(async () => {
 .podium-avatar-box :deep(.image-preview__image) {
   width: 100% !important;
   height: 100% !important;
+  object-fit: cover !important;
+  object-position: center !important;
+  padding: 0 !important;
 }
 
 .stats-person-cell {
@@ -396,15 +402,35 @@ onMounted(async () => {
 }
 
 .stats-person-avatar {
-  width: 38px;
-  height: 38px;
-  flex: 0 0 38px;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+.stats-person-avatar :deep(.image-preview),
+.stats-person-avatar :deep(.image-preview__image) {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: center !important;
+  padding: 0 !important;
 }
 
 .stats-team-crest {
   width: 28px;
   height: 28px;
   flex: 0 0 28px;
+}
+
+.podium-team-crest {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
 }
 
 .podium-avatar-box--1 {
@@ -425,7 +451,7 @@ onMounted(async () => {
 }
 
 .podium-team-name {
-  font-size: 0.74rem;
+  font-size: 0.86rem;
   color: var(--tb-muted);
   font-weight: 600;
   margin-top: 2px;

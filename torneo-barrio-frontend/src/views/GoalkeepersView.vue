@@ -147,8 +147,8 @@ onMounted(async () => {
                       :src="goalkeeper.photoUrl || '/images/default-avatar.svg'"
                       fallback="/images/default-avatar.svg"
                       :alt="`Foto de ${goalkeeper.player}`"
-                      width="30px"
-                      height="30px"
+                      width="40px"
+                      height="40px"
                     />
                   </div>
                   <span>{{ goalkeeper.player }}</span>
@@ -299,9 +299,23 @@ onMounted(async () => {
 }
 
 .stats-person-avatar {
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+.stats-person-avatar :deep(.image-preview),
+.stats-person-avatar :deep(.image-preview__image) {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: center !important;
+  padding: 0 !important;
 }
 
 .stats-team-crest {

@@ -145,8 +145,8 @@ onMounted(async () => {
                     :src="props.row.playerPhotoUrl || '/images/default-avatar.svg'"
                     fallback="/images/default-avatar.svg"
                     :alt="`Foto de ${props.row.player}`"
-                    width="34px"
-                    height="34px"
+                    width="40px"
+                    height="40px"
                   />
                 </div>
                 <span class="text-weight-bold text-white">{{ props.row.player }}</span>
@@ -279,9 +279,23 @@ onMounted(async () => {
 }
 
 .stats-person-avatar {
-  width: 38px;
-  height: 38px;
-  flex: 0 0 38px;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+.stats-person-avatar :deep(.image-preview),
+.stats-person-avatar :deep(.image-preview__image) {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: center !important;
+  padding: 0 !important;
 }
 
 .stats-team-crest {

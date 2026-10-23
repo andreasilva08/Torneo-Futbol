@@ -101,6 +101,9 @@ const topScorersList = computed(() => {
   return store.scorers.slice(0, 5)
 })
 
+const scorerPhoto = (scorer) => scorer?.playerPhotoUrl || scorer?.photoUrl || scorer?.foto_url || scorer?.photo || scorer?.image ||
+  scorer?.player?.photoUrl || scorer?.player?.foto_url || scorer?.player?.photo || scorer?.player?.image || '/images/default-avatar.svg'
+
 const playerLabel = (playerId, fallbackName) => {
   if (fallbackName) return fallbackName
   const player = store.players.find((item) => item._id === getId(playerId))
@@ -453,7 +456,13 @@ onUnmounted(() => {
                 </div>
 
                 <div class="scorer-avatar-box">
-                  {{ scorer.player?.charAt(0)?.toUpperCase() || 'J' }}
+                  <ImagePreview
+                    :src="scorerPhoto(scorer)"
+                    fallback="/images/default-avatar.svg"
+                    :alt="`Foto de ${scorer.player}`"
+                    width="34px"
+                    height="34px"
+                  />
                 </div>
 
                 <div class="col min-width-0">
@@ -697,6 +706,15 @@ onUnmounted(() => {
   font-weight: 800;
   color: #ffffff;
   font-size: 0.85rem;
+  overflow: hidden;
+}
+
+.scorer-avatar-box :deep(.image-preview),
+.scorer-avatar-box :deep(.image-preview__image) {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  padding: 0 !important;
 }
 
 .scorer-name {
