@@ -1,161 +1,140 @@
-# ⚽ Torneo de Fútbol de Barrio - Plataforma de Gestión Deportiva
+# ⚽ Torneo Barrio - Plataforma Full-Stack de Gestión Deportiva
 
-Sistema web full-stack diseñado para la administración, programación, control en vivo y estadísticas de torneos de fútbol aficionados y comunitarios.
-
-Permite gestionar equipos, plantillas de jugadores, fixtures por jornadas, actas de partidos en vivo (goles, asistencias, tarjetas) y genera automáticamente la tabla de posiciones y las tablas de goleo y asistencias con cómputo nativo en base de datos.
-
----
+Sistema web full-stack para la administración, programación y control de torneos de fútbol aficionados y comunitarios.
 
 ## 📌 Tabla de Contenidos
 
-1. [Características Principales](#-características-principales)
-2. [Arquitectura y Stack Tecnológico](#-arquitectura-y-stack-tecnológico)
-3. [Estructura del Proyecto](#-estructura-del-proyecto)
-4. [Requisitos Previos](#-requisitos-previos)
-5. [Configuración e Instalación](#-configuración-e-instalación)
-   - [Configuración del Backend](#1-backend-torneo-barrio-backend)
-   - [Configuración del Frontend](#2-frontend-torneo-barrio-frontend)
-6. [Catálogo de la API REST](#-catálogo-de-la-api-rest)
-7. [Documento de Exposición y Mejoras](#-documento-de-exposición-y-mejoras)
-8. [Autores y Créditos](#-autores-y-créditos)
+1. [Descripción del Proyecto](#descripción-del-proyecto)
+2. [Tecnologías Utilizadas](#tecnologías-utilizadas)
+3. [Estructura del Proyecto](#estructura-del-proyecto)
+4. [Módulos Principales](#módulos-principales)
+5. [Requisitos Previos](#requisitos-previos)
+6. [Configuración e Instalación](#configuración-e-instalación)
+7. [Despliegue](#despliegue)
 
 ---
 
-## 🚀 Características Principales
+## 📝 Descripción del Proyecto
 
-- **🛡️ Gestión de Clubes / Equipos**: Creación, actualización y eliminación de equipos con nombre oficial, abreviatura (`shortName`), estadio y escudo (URL de logo opcional con fallback elegante unificado).
-- **🏃‍♂️ Gestión de Jugadores (List View & Grid View)**:
-  - **Doble Modo de Visualización**: Alternancia fluida entre **Vista Tabla / Lista (`List View`)** con filas estilizadas y **Vista Tarjetas Deportivas (`Grid View`)** tipo ficha/cromo con dorsal, estadísticas y badges.
-  - **Edición Rápida en Fila (Inline Quick-Edit)**: Facilidad total para que el organizador edite el dorsal, nombre, posición, club y condición directamente desde la fila del jugador con guardado y validaciones en un solo clic, sin necesidad de abrir modales pesados.
-  - **Identidad Gráfica y Escudos Unificados**: Todos los futbolistas de un mismo club comparten de forma consistente y unificada el escudo institucional de su equipo, tanto en sus avatares como en sus badges.
-  - Control de condición deportiva (`TITULAR`, `SUPLENTE`, `LESIONADO`, `SANCIONADO_ROJA`, `SANCIONADO_AMARILLAS`) y validación de dorsales únicos por club.
-- **📅 Fixture y Calendario por Jornadas**: Programación de partidos con fecha, hora y canchas. Validación de reglas de negocio (un club no puede disputar la misma jornada dos veces).
-- **⏱️ Marcador, Cronología y Actas de Partido en Vivo**:
-  - Registro de goles (autor, asistente, minuto y autogol) con recálculo automático del marcador en tiempo real.
-  - **Selector de Plantilla con Scroll Adaptativo y Menú Optimizado**: Permite explorar y seleccionar cómodamente a cualquier jugador de la nómina completa sin bloqueos de desplazamiento.
-  - Visualización completa de participantes e incidencias divididas por lado de equipo (local / visitante).
-  - Posibilidad de **editar o eliminar eventos y goles en vivo** ante errores humanos antes de finalizar el encuentro.
-- **🟥 Control Disciplinario y Expulsiones Automáticas**:
-  - Detección inmediata de tarjeta roja directa o doble tarjeta amarilla acumulada en el mismo partido.
-  - Exclusión automática del jugador expulsado para cualquier evento posterior en el partido y actualización de su estado a `SANCIONADO_ROJA` o `SANCIONADO_AMARILLAS`.
-  - Validación de elegibilidad: únicamente jugadores en condición `TITULAR` o `SUPLENTE` pueden participar en los eventos.
-- **🔄 Sustituciones y Gestión de Lesionados**:
-  - Registro de sustituciones (`SUBSTITUTION`) vinculando el equipo, jugador saliente (⬇️) y jugador entrante (⬆️).
-  - Registro de lesiones (`INJURY`) con especificación de tiempo estimado de baja médica, sustitución obligatoria y actualización a condición `LESIONADO`.
-- **📊 Tabla de Posiciones Dinámica**: Cálculo de Pts, PJ, PG, PE, PP, GF, GC y DG en tiempo real.
-- **🥇 Tablas de Rendimiento (MongoDB Aggregation Pipelines)**:
-  - Máximos Goleadores (Top Scorers).
-  - Máximos Asistidores (Top Assists).
-  - Valla Menos Vencida (Goalkeepers).
+Torneo Barrio es una plataforma full-stack diseñada para gestionar torneos de fútbol comunitarios, permitiendo:
+- **Administración de equipos y jugadores**: Creación, edición y visualización de equipos y jugadores con sus respectivas condiciones (titular, suplente, lesionado, sancionado).
+- **Gestión de partidos y actas**: Programación de partidos, registro de goles, asistencias, tarjetas, sustituciones y lesiones en tiempo real.
+- **Tabla de posiciones dinámica**: Cálculo automático de posiciones, puntos, goles a favor y en contra.
+- **Estadísticas avanzadas**: Tablas de goleadores, asistentes y valla menos vencida.
+- **Control disciplinario**: Gestión de sanciones automáticas por tarjetas y lesiones.
+
+El sistema está optimizado para ser utilizado en entornos comunitarios, con una interfaz intuitiva y funcionalidades que facilitan la gestión de torneos deportivos.
 
 ---
 
-## 🛠️ Arquitectura y Stack Tecnológico
-
-El proyecto está diseñado bajo un modelo **desacoplado Cliente-Servidor (Client-Server Architecture)**:
-
-```mermaid
-graph TD
-    Client[Cliente Web: Vue 3 + Vite + Quasar + Pinia] -->|Peticiones HTTP REST| Backend[API REST: Node.js + Express]
-    Backend -->|Mongoose ODM / TCP Seguro| Database[(Base de Datos: MongoDB Atlas Cloud)]
-```
+## 🛠️ Tecnologías Utilizadas
 
 ### Backend
-- **Entorno de ejecución**: Node.js
-- **Framework web**: Express.js
-- **Base de datos**: MongoDB Atlas (Cloud)
-- **Modelado de datos (ODM)**: Mongoose (con esquemas para `Team`, `Player` y `Match` con subdocumentos y validación)
-- **Variables de entorno**: dotenv
-- **Seguridad**: CORS configurable con lista blanca
+- **Node.js**: Entorno de ejecución.
+- **Express.js**: Framework web para manejar las rutas y lógica del servidor.
+- **MongoDB Atlas**: Base de datos NoSQL en la nube para almacenar datos de equipos, jugadores y partidos.
+- **Mongoose**: ODM para modelar y validar los esquemas de datos.
+- **Axios**: Cliente HTTP para manejar las peticiones desde el frontend.
 
 ### Frontend
-- **Framework**: Vue 3 (Composition API con `<script setup>`)
-- **Biblioteca de Componentes**: Quasar Framework (v2) para diálogos, selectores, botones y notificaciones toast
-- **Empaquetador y Dev Server**: Vite
-- **Manejo de Estado Global**: Pinia (stores modulares: `teams`, `players`, `stats`, `tournament`)
-- **Enrutamiento**: Vue Router 4
-- **Cliente HTTP**: Axios (con interceptores para manejo centralizado de errores y tiempos de espera)
-- **Diseño**: Dark Sports UI con CSS vanilla adaptativo y responsive
+- **Vue 3**: Framework progresivo para construir interfaces de usuario.
+- **Quasar Framework**: Biblioteca de componentes para crear interfaces modernas y responsivas.
+- **Vite**: Herramienta de construcción y desarrollo rápida.
+- **Pinia**: Biblioteca de estado para Vue para manejar el estado global de la aplicación.
+- **Vue Router**: Para el manejo de rutas y navegación.
 
 ---
 
 ## 📂 Estructura del Proyecto
 
 ```text
-Torneo-Futbol-main/
-├── README.md                      # Documentación técnica general del repositorio
-├── EXPOSICION_Y_AJUSTES.md        # Guía para exponer el proyecto y bitácora técnica
+Torneo-Futbol/
+├── torneo-barrio-backend/
+│   ├── src/
+│   │   ├── models/
+│   │   │   ├── Player.js          # Modelo de jugadores con condición 'SIN_ASIGNAR'
+│   │   │   ├── Team.js            # Modelo de equipos
+│   │   │   └── Match.js           # Modelo de partidos
+│   │   ├── controllers/
+│   │   │   ├── playerController.js # Lógica de jugadores
+│   │   │   ├── matchController.js # Lógica de partidos
+│   │   │   └── statsController.js # Lógica de estadísticas
+│   │   └── routes/
+│   │       ├── playerRoutes.js
+│   │       ├── matchRoutes.js
+│   │       └── statsRoutes.js
+│   └── package.json
+│   └── .env
+│   └── .env.example
+│   └── app.js
+│   └── config/
+│       └── db.js
+│   └── middleware/
+│       └── errorHandler.js
 │
-├── torneo-barrio-backend/         # Servidor API REST (Node.js + Express)
-│   ├── .env                       # Variables de entorno (conexión MongoDB Atlas, puerto)
-│   ├── .env.example               # Plantilla de variables de entorno
+├── torneo-barrio-frontend/
+│   ├── src/
+│   │   ├── stores/
+│   │   │   ├── tournament.js      # Store global
+│   │   │   ├── teams.js           # Store de equipos
+│   │   │   ├── players.js         # Store de jugadores
+│   │   │   └── stats.js           # Store de estadísticas
+│   │   ├── views/
+│   │   │   ├── StandingsView.vue   # Tabla de posiciones
+│   │   │   ├── PlayersView.vue     # Vista de jugadores
+│   │   │   ├── MatchesView.vue     # Vista de partidos
+│   │   │   └── MatchDetailView.vue # Detalle de partidos
+│   │   ├── components/
+│   │   ├── utils/
+│   │   └── services/
+│   │       └── api.js             # Configuración de Axios
 │   ├── package.json
-│   └── src/
-│       ├── app.js                 # Inicialización de Express, CORS y middlewares
-│       ├── config/
-│       │   └── db.js              # Conexión optimizada a MongoDB Atlas con reconexión
-│       ├── controllers/
-│       │   ├── matchController.js # Lógica de partidos, fixture, eventos, sanciones y actas
-│       │   ├── playerController.js# Lógica de jugadores, condiciones y plantillas
-│       │   ├── statsController.js # Pipelines de agregación (posiciones, goleadores)
-│       │   └── teamController.js  # Lógica de gestión de clubes
-│       ├── middleware/
-│       │   └── errorHandler.js    # Manejo centralizado de excepciones y errores HTTP
-│       ├── models/
-│       │   ├── Match.js           # Esquema de partidos, goles, eventos y sustituciones
-│       │   ├── Player.js          # Esquema de jugadores y estados disciplinarios
-│       │   └── Team.js            # Esquema de equipos
-│       └── routes/
-│           ├── matchRoutes.js
-│           ├── playerRoutes.js
-│           ├── statsRoutes.js
-│           └── teamRoutes.js
+│   ├── vite.config.js
+│   └── index.html
+│   └── main.js
+│   └── router/
+│       └── index.js
 │
-└── torneo-barrio-frontend/        # Interfaz de Usuario (Vue 3 + Vite + Quasar)
-    ├── index.html
-    ├── package.json
-    ├── vite.config.js
-    ├── tsconfig.json              # Configuración de compilador para tooling
-    └── src/
-        ├── App.vue
-        ├── main.js                # Montaje de Vue, Pinia, Quasar y Vue Router
-        ├── router/
-        │   └── index.js           # Definición de rutas y vistas SPA
-        ├── services/
-        │   └── api.js             # Instancia Axios con interceptores de error
-        ├── stores/                # Manejadores de estado Pinia
-        │   ├── tournament.js      # Store global principal
-        │   ├── teams.js           # Store modular de equipos
-        │   ├── players.js         # Store modular de jugadores
-        │   └── stats.js           # Store modular de estadísticas y posiciones
-        ├── utils/
-        │   └── matchFormatting.js # Helpers de formato de incidencias y estados
-        └── views/                 # Vistas de la aplicación
-            ├── DashboardView.vue   # Panel central con resumen general
-            ├── TeamsView.vue       # Listado y creación de equipos (logo opcional)
-            ├── TeamDetailView.vue  # Perfil y plantilla del equipo
-            ├── PlayersView.vue     # Catálogo y fichas de jugadores
-            ├── MatchesView.vue     # Fixture por jornadas y filtros
-            ├── MatchDetailView.vue # Cronología en vivo, goles, cambios y sanciones
-            ├── StandingsView.vue   # Tabla de posiciones
-            ├── ScorersView.vue     # Tabla de goleadores
-            ├── AssistsView.vue     # Tabla de asistencias
-            └── GoalkeepersView.vue # Valla menos vencida
+├── README.md
+└── .gitignore
 ```
+
+---
+
+## 📋 Módulos Principales
+
+### 1. Equipos y Jugadores
+- **Equipos**: Creación, edición y visualización de equipos con logos y nombres.
+- **Jugadores**: Gestión de jugadores con condiciones como `TITULAR`, `SUPLENTE`, `LESIONADO`, `SANCIONADO_ROJA`, `SANCIONADO_AMARILLAS` y `SIN_ASIGNAR`.
+- **Plantillas**: Visualización de jugadores por equipo con sus respectivas condiciones.
+
+### 2. Partidos
+- **Fixture**: Programación de partidos por jornadas.
+- **Actas de Partido**: Registro de goles, asistencias, tarjetas, sustituciones y lesiones en tiempo real.
+- **Marcador**: Visualización y actualización del marcador en vivo.
+
+### 3. Estadísticas
+- **Tabla de Posiciones**: Cálculo automático de puntos, partidos jugados, goles a favor y en contra.
+- **Tablas de Rendimiento**: Máximos goleadores, asistentes y valla menos vencida.
+
+### 4. Control Disciplinario
+- **Sanciones Automáticas**: Detección de tarjetas rojas directas y acumulación de tarjetas amarillas.
+- **Lesiones**: Registro de lesiones y sustituciones obligatorias.
 
 ---
 
 ## 📋 Requisitos Previos
 
-- **Node.js**: Versión 18.x o superior instalada.
+- **Node.js**: Versión 18.x o superior.
 - **npm**: Versión 9.x o superior.
-- **Acceso a Internet**: Para conectar con el clúster de **MongoDB Atlas**.
+- **MongoDB Atlas**: Cuenta activa para configurar la conexión a la base de datos.
+- **Acceso a Internet**: Para conectar con MongoDB Atlas.
 
 ---
 
 ## ⚙️ Configuración e Instalación
 
-### 1. Backend (`torneo-barrio-backend`)
+### Backend
 
 1. Navega a la carpeta del backend:
    ```bash
@@ -167,24 +146,21 @@ Torneo-Futbol-main/
    npm install
    ```
 
-3. Crea o verifica el archivo `.env`:
+3. Configura el archivo `.env` con las variables necesarias:
    ```env
    PORT=5001
-MONGO_URI=mongodb+srv://<usuario>:<password>@cluster1.p7qdqgc.mongodb.net/torneo-futbol?retryWrites=true&w=majority   
-CORS_ORIGIN=http://localhost:5173,http://localhost:4173
+   MONGO_URI=mongodb+srv://<usuario>:<password>@cluster1.p7qdqgc.mongodb.net/torneo-futbol?retryWrites=true&w=majority
+   CORS_ORIGIN=http://localhost:5173,http://localhost:4173
    ```
 
 4. Inicia el servidor de desarrollo:
    ```bash
    npm run dev
-   # o bien: npm start
    ```
 
    El servidor quedará disponible en: `http://localhost:5001`.
 
----
-
-### 2. Frontend (`torneo-barrio-frontend`)
+### Frontend
 
 1. Abre una nueva terminal y navega a la carpeta del frontend:
    ```bash
@@ -196,78 +172,55 @@ CORS_ORIGIN=http://localhost:5173,http://localhost:4173
    npm install
    ```
 
-3. (Opcional) Si requieres cambiar la URL del backend, crea un archivo `.env`:
+3. (Opcional) Configura la URL del backend en `.env`:
    ```env
    VITE_API_URL=http://localhost:5001/api
    ```
 
-4. Inicia el servidor de desarrollo de Vite:
+4. Inicia el servidor de desarrollo:
    ```bash
    npm run dev
    ```
 
-   La aplicación abrirá localmente en: `http://localhost:5173`.
+   La aplicación se abrirá en: `http://localhost:5173`.
 
 ---
 
-## 📡 Catálogo de la API REST
+## 🚀 Despliegue
 
-### Equipos (`/api/teams`)
-| Método | Endpoint | Descripción |
-| :--- | :--- | :--- |
-| `GET` | `/api/teams` | Obtener listado de todos los equipos |
-| `GET` | `/api/teams/:id` | Obtener detalle de un equipo |
-| `GET` | `/api/teams/:id/players` | Obtener todos los jugadores del equipo |
-| `POST` | `/api/teams` | Crear un nuevo equipo (logo opcional) |
-| `PUT` | `/api/teams/:id` | Editar datos de un equipo |
-| `DELETE` | `/api/teams/:id` | Eliminar un equipo |
+Para desplegar el proyecto en producción, sigue estos pasos:
 
-### Jugadores (`/api/players`)
-| Método | Endpoint | Descripción |
-| :--- | :--- | :--- |
-| `GET` | `/api/players` | Listar jugadores (soporta paginación: `?page=1&limit=20`) |
-| `GET` | `/api/players/:id` | Obtener detalle de un jugador con su equipo |
-| `POST` | `/api/players` | Registrar un nuevo jugador con condición inicial |
-| `PUT` | `/api/players/:id` | Modificar datos, dorsal o condición de un jugador |
-| `DELETE` | `/api/players/:id` | Eliminar un jugador |
+### Backend
 
-### Partidos (`/api/matches`)
-| Método | Endpoint | Descripción |
-| :--- | :--- | :--- |
-| `GET` | `/api/matches` | Listar partidos (filtros: `?matchday=1`, `?status=FINISHED`, `?page=1&limit=10`) |
-| `GET` | `/api/matches/:id` | Detalle de un partido con alineaciones, goles y eventos |
-| `POST` | `/api/matches` | Programar un nuevo partido |
-| `PUT` | `/api/matches/:id` | Modificar fecha o equipos del partido |
-| `PUT` | `/api/matches/:id/result` | Actualizar marcador, estado y lista de goles |
-| `PUT` | `/api/matches/:id/events` | Registrar eventos disciplinarios, sustituciones y lesiones (aplica sanciones automáticas en BD) |
-| `DELETE` | `/api/matches/:id` | Cancelar/Eliminar un partido |
+1. Configura las variables de entorno en un entorno de producción.
+2. Compila y optimiza el código:
+   ```bash
+   npm run build
+   ```
+3. Ejecuta el servidor en modo producción:
+   ```bash
+   npm start
+   ```
 
-### Estadísticas y Posiciones (`/api`)
-| Método | Endpoint | Descripción |
-| :--- | :--- | :--- |
-| `GET` | `/api/standings` | Tabla de posiciones general calculada en tiempo real |
-| `GET` | `/api/stats/top-scorers` | Tabla de goleadores (MongoDB Aggregation Pipeline) |
-| `GET` | `/api/stats/top-assists` | Tabla de asistentes (MongoDB Aggregation Pipeline) |
-| `GET` | `/api/stats/goalkeepers` | Valla menos vencida |
+### Frontend
+
+1. Compila la aplicación para producción:
+   ```bash
+   npm run build
+   ```
+
+2. Configura un servidor estático para servir los archivos generados en la carpeta `dist`.
 
 ---
 
-## 📑 Documento de Exposición y Mejoras
+## 📄 Notas Adicionales
 
-Para preparar una presentación formal o sustentación del proyecto, consulta el documento:
-👉 **[EXPOSICION_Y_AJUSTES.md](./EXPOSICION_Y_AJUSTES.md)**
-
-Incluye:
-- Ficha técnica y propuesta de valor del software.
-- Recorrido paso a paso de los flujos de usuario.
-- Explicación de las optimizaciones de base de datos implementadas.
-- Bitácora completa de los ajustes de sanciones disciplinarias, sustituciones, lesiones y actas en vivo.
-- Guía para responder preguntas del jurado.
+- **Condición de Jugadores**: Los jugadores pueden tener las siguientes condiciones: `TITULAR`, `SUPLENTE`, `LESIONADO`, `SANCIONADO_ROJA`, `SANCIONADO_AMARILLAS` y `SIN_ASIGNAR`.
+- **Validaciones**: El sistema valida que los dorsales sean únicos por equipo y que los jugadores sancionados no puedan participar en partidos.
+- **Automatización**: Las estadísticas y tabla de posiciones se actualizan automáticamente al finalizar los partidos.
 
 ---
 
-## 👥 Autores y Créditos
+## 👥 Autores
 
-Proyecto desarrollado y optimizado para la gestión comunitaria del deporte.
-- **Frontend & Backend**: Equipo de Desarrollo Torneo de Barrio
-- **Arquitectura de Base de Datos**: MongoDB Atlas & Mongoose
+Este proyecto fue desarrollado por el equipo de Torneo Barrio para facilitar la gestión de torneos deportivos comunitarios.

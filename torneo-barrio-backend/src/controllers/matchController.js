@@ -980,12 +980,20 @@ const updateMatchEvents = async (req, res) => {
 
         const sanitizedEvents = [];
 
-        // Rastrear tarjetas amarillas y eventos por jugador en este partido
+        // Rastrear tarjetas amarillas y rojas por jugador en este partido
         const yellowCounts = new Map();
+        const redCounts = new Map();
 
-        if (!Array.isArray(events)) {
-            return res.status(400).json({ message: 'La lista de incidencias no es válida' });
-        }
+        // 1. Pre-procesar eventos existentes para contabilizar tarjetas antes de procesar nuevos
+        match.events.forEach(ev => {
+            const pid = ev.player ? ev.player.toString() : '';
+            const t = String(ev.type || '').toUpperCase();
+            if (t === 'YELLOW_CARD' || t.includes('AMARILLA')) {
+                yellowCounts.set(pid, (yellowCounts.get(pid) || 0) + 1);
+            } else if (t === 'RED_CARD' || t.includes('ROJA')) {
+                redCounts.set(pid, (redCounts.get(pid) || 0) + 1);
+            }
+        });
 
         for (let index = 0; index < events.length; index += 1) {
             const event = events[index];
@@ -1055,7 +1063,11 @@ const updateMatchEvents = async (req, res) => {
                         playerDoc.equipo = targetTeam.name || targetTeam.nombre || playerDoc.equipo;
                     }
 
+                    // Procesar tarjetas
                     if (evType === 'RED_CARD' || evType.includes('ROJA')) {
+                        const currentRed = (redCounts.get(playerDoc._id.toString()) || 0) + 1;
+                        redCounts.set(playerDoc._id.toString(), currentRed);
+
                         playerDoc.status = 'SANCIONADO_ROJA';
                         playerDoc.condicion = 'SANCIONADO_ROJA';
                         playerDoc.suspendedUntilMatchday = Number(match.matchday) + 1;
@@ -1069,12 +1081,27 @@ const updateMatchEvents = async (req, res) => {
                         }).sort({ matchday: 1, date: 1 }).select('date').lean();
                         playerDoc.suspensionReturnDate = returnMatch?.date || null;
                     } else if (evType === 'YELLOW_CARD' || evType.includes('AMARILLA')) {
-                        const currentCount = (yellowCounts.get(playerDoc._id.toString()) || 0) + 1;
-                        yellowCounts.set(playerDoc._id.toString(), currentCount);
-                        if (currentCount >= 2) {
-                            playerDoc.status = 'SANCIONADO_AMARILLAS';
-                            playerDoc.condicion = 'SANCIONADO_AMARILLAS';
+                        const currentYellow = (yellowCounts.get(playerDoc._id.toString()) || 0) + 1;
+                        yellowCounts.set(playerDoc._id.toString(), currentYellow);
+
+                        // Si llega a 2 amarillas, convertir a roja automática
+                        if (currentYellow >= 2) {
+                            // Crear evento de tarjeta roja automática si no existe uno explícito
+                            const redEvent = {
+                                type: 'RED_CARD',
+                                player: playerDoc._id,
+                                team: eventTeamId,
+                                minute: event.minute,
+                                description: 'Expulsión automática por doble amarilla'
+                            };
+                            sanitizedEvents.push(redEvent);
+
+                            playerDoc.status = 'SANCIONADO_ROJA';
+                            playerDoc.condicion = 'SANCIONADO_ROJA';
                             playerDoc.suspendedUntilMatchday = Number(match.matchday) + 1;
+                        } else {
+                            playerDoc.status = 'TITULAR'; // O mantener estado previo
+                            playerDoc.condicion = 'TITULAR';
                         }
                     } else if (isInjury) {
                         if (recoveryDuration && ![ 'DAYS', 'WEEKS' ].includes(recoveryUnit)) {
@@ -1133,6 +1160,62 @@ const updateMatchEvents = async (req, res) => {
                 recoveryDate: event.recoveryDate || previousEvent?.recoveryDate || null,
                 description: event.description || '',
             });
+
+            // Lógica de rollback: Si se eliminó una tarjeta, verificar si el jugador ya no tiene sanciones
+            if (previousEvent && (previousEvent.type === 'RED_CARD' || previousEvent.type.includes('ROJA'))) {
+                const previousPlayerId = previousEvent.player ? previousEvent.player.toString() : '';
+                if (previousPlayerId) {
+                    const playerDoc = await Player.findById(previousPlayerId);
+                    if (playerDoc) {
+                        // Verificar si el jugador tiene otra tarjeta roja o amarilla en otros eventos
+                        const hasOtherRed = match.events.some(ev =>
+                            ev.player?.toString() === previousPlayerId &&
+                            (ev.type === 'RED_CARD' || ev.type.includes('ROJA')) &&
+                            ev._id?.toString() !== previousEvent._id?.toString()
+                        );
+
+                        const hasOtherYellow = match.events.some(ev =>
+                            ev.player?.toString() === previousPlayerId &&
+                            (ev.type === 'YELLOW_CARD' || ev.type.includes('AMARILLA')) &&
+                            ev._id?.toString() !== previousEvent._id?.toString()
+                        );
+
+                        // Si no hay otras tarjetas rojas o amarillas, restaurar el estado del jugador
+                        if (!hasOtherRed && !hasOtherYellow) {
+                            playerDoc.status = 'TITULAR';
+                            playerDoc.condicion = 'TITULAR';
+                            playerDoc.suspendedUntilMatchday = null;
+                            playerDoc.suspensionReturnDate = null;
+                            await playerDoc.save();
+                        }
+                    }
+                }
+            }
+
+            // Lógica de rollback para tarjetas amarillas
+            if (previousEvent && (previousEvent.type === 'YELLOW_CARD' || previousEvent.type.includes('AMARILLA'))) {
+                const previousPlayerId = previousEvent.player ? previousEvent.player.toString() : '';
+                if (previousPlayerId) {
+                    const playerDoc = await Player.findById(previousPlayerId);
+                    if (playerDoc) {
+                        // Verificar si el jugador tiene otra tarjeta amarilla en otros eventos
+                        const hasOtherYellow = match.events.some(ev =>
+                            ev.player?.toString() === previousPlayerId &&
+                            (ev.type === 'YELLOW_CARD' || ev.type.includes('AMARILLA')) &&
+                            ev._id?.toString() !== previousEvent._id?.toString()
+                        );
+
+                        // Si no hay otras tarjetas amarillas, restaurar el estado del jugador
+                        if (!hasOtherYellow) {
+                            playerDoc.status = 'TITULAR';
+                            playerDoc.condicion = 'TITULAR';
+                            playerDoc.suspendedUntilMatchday = null;
+                            playerDoc.suspensionReturnDate = null;
+                            await playerDoc.save();
+                        }
+                    }
+                }
+            }
         }
 
         match.events = sanitizedEvents;

@@ -1054,10 +1054,20 @@ const savePlayer = async () => {
   }
 
   try {
-    await (editingId.value
+    const newPlayer = await (editingId.value
       ? store.updatePlayer(String(editingId.value), payload)
       : store.createPlayer(payload))
 
+      // Actualizar el store de jugadores con el nuevo jugador
+      if (!editingId.value) {
+        store.players.unshift(newPlayer);
+      }
+
+    // Si es creación de un nuevo jugador, abrir modal con el nuevo jugador
+    if (!editingId.value) {
+      dialog.value = true
+      editingId.value = newPlayer._id
+    }
     closeDialog()
     $q.notify({ type: 'positive', message: 'Jugador guardado correctamente.' })
   } catch (error) {
@@ -2818,6 +2828,7 @@ onMounted(async () => {
 }
 
 .jersey-preview-card {
+  min-height: 240px;
   position: relative;
   width: 200px;
   height: 230px;
@@ -2910,6 +2921,19 @@ onMounted(async () => {
 }
 
 .jersey-club-tag {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  opacity: 0.75;
+  max-width: 80%;
+  text-overflow: ellipsis;
+  overflow: hidden;
   position: absolute;
   bottom: 6px;
   left: 50%;

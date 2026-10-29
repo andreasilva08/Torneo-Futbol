@@ -95,8 +95,8 @@ const playerSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['TITULAR', 'SUPLENTE', 'LESIONADO', 'SANCIONADO_ROJA', 'SANCIONADO_AMARILLAS'],
-      default: 'TITULAR',
+      enum: ['TITULAR', 'SUPLENTE', 'LESIONADO', 'SANCIONADO_ROJA', 'SANCIONADO_AMARILLAS', 'SIN_ASIGNAR'],
+      default: 'SIN_ASIGNAR',
     },
     suspendedUntilMatchday: {
       type: Number,
@@ -120,7 +120,9 @@ const playerSchema = new mongoose.Schema(
     },
     condicion: {
       type: String,
-      default: 'TITULAR',
+      uppercase: true,
+      enum: ['TITULAR', 'SUPLENTE', 'LESIONADO', 'SANCIONADO_ROJA', 'SANCIONADO_AMARILLAS', 'SIN_ASIGNAR'],
+      default: 'SIN_ASIGNAR',
     },
     photoUrl: {
       type: String,
