@@ -75,20 +75,8 @@ const parseMatchdayDate = (date, fallbackDate) => {
 };
 
 const findMatchdayDateConstraintError = async ({ matchday, matchdayDate, excludeId, allowReschedule = false }) => {
-    if (!matchdayDate || allowReschedule) return null;
-    const exclude = excludeId ? { _id: { $ne: excludeId } } : {};
-    const existing = await Match.find({
-        ...exclude,
-        matchday: Number(matchday),
-        status: { $nin: RESCHEDULED_STATUSES },
-    }).select('matchdayDate date').lean();
-    const dateConflict = existing.some((match) => {
-        const existingDate = match.matchdayDate || (match.date ? new Date(match.date).toISOString().slice(0, 10) : '');
-        return existingDate && existingDate !== matchdayDate;
-    });
-    return dateConflict
-        ? 'Todos los partidos de una jornada deben tener la misma fecha base.'
-        : null;
+    // Desactivado temporalmente para fase de pruebas y flexibilidad horaria
+    return null;
 };
 
 const findMatchConstraintError = async ({ matchday, homeTeam, awayTeam, date, stadium, excludeId }) => {
