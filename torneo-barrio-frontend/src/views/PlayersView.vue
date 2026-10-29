@@ -87,7 +87,7 @@ const formatLocalDateString = (d) => {
   const year = d.getFullYear()
   const month = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  return `year-{month}-${day}`
 }
 
 const calcRecoveryDate = () => {
@@ -409,7 +409,7 @@ const editingPlayerSanctionInfo = computed(() => {
     const until = Number(player.suspendedUntilMatchday)
     const currentMaxMatchday = Math.max(...store.matches.filter((m) => m.status === 'FINISHED').map((m) => Number(m.matchday) || 0), 0)
     const matchesRemaining = Math.max(1, until - currentMaxMatchday)
-    remainingText = `Partidos de sanción restantes: ${matchesRemaining} fecha(s) (inhabilitado hasta J${until}, habilitado desde J${until + 1}).`
+    remainingText = `Partidos de sanción restantes: matchesRemainingfecha(s)(inhabilitadohastaJ{until}, habilitado desde J${until + 1}).`
   } else if (player?.suspensionReturnDate) {
     const returnDate = new Date(player.suspensionReturnDate)
     if (!Number.isNaN(returnDate.getTime())) {
@@ -1288,11 +1288,11 @@ onMounted(async () => {
         <template #body-cell-player="props">
           <q-td :props="props">
             <div v-if="inlineEditId === props.row._id" class="row items-center no-wrap gap-sm">
-              <div class="player-avatar-pill">
+              <div class="player-table-avatar">
                 <img
                   :src="props.row.photoUrl || props.row.foto_url || '/images/default-avatar.svg'"
                   :alt="`Escudo de ${props.row.name || props.row.nombre}`"
-                  class="player-avatar-image"
+                  class="player-table-avatar-img"
                   crossorigin="anonymous"
                   @error="handlePlayerAvatarError"
                 />
@@ -1342,11 +1342,11 @@ onMounted(async () => {
             </div>
 
             <div v-else class="row items-center no-wrap gap-md">
-              <div class="player-avatar-pill">
+              <div class="player-table-avatar">
                 <img
                   :src="props.row.photoUrl || props.row.foto_url || '/images/default-avatar.svg'"
                   :alt="`Foto de ${props.row.name || props.row.nombre}`"
-                  class="player-avatar-image"
+                  class="player-table-avatar-img"
                   crossorigin="anonymous"
                   @error="handlePlayerAvatarError"
                 />
@@ -1558,11 +1558,11 @@ onMounted(async () => {
             <span class="dorsal-blue-box text-weight-bolder player-card__number">
               #{{ player.number ?? player.dorsal ?? '-' }}
             </span>
-            <div class="player-avatar-pill player-card__avatar shadow-2">
+            <div class="player-card-avatar shadow-2">
               <img
                 :src="player?.photoUrl || player?.foto_url || player?.photo || '/images/default-avatar.svg'"
                 :alt="`Foto de ${player.name || player.nombre}`"
-                class="player-avatar-image"
+                class="player-card-avatar-img"
                 crossorigin="anonymous"
                 @error="(e) => e.target.src = '/images/default-avatar.svg'"
               />
@@ -1693,7 +1693,7 @@ onMounted(async () => {
           </div>
         </q-card-section>
 
-        <q-form @submit.prevent="savePlayer" class="q-pa-lg q-gutter-y-lg">
+        <q-form @submit.prevent="savePlayer" class="q-pa-lg q-gutter-y-md">
 
           <!-- ══ NOMBRE ESTRUCTURADO DEL JUGADOR ══ -->
           <div>
@@ -2056,16 +2056,31 @@ onMounted(async () => {
             </div>
           </div>
 
-          <!-- PHOTO URL & PREVIEW -->
-          <q-input
-            v-model="form.photoUrl"
-            label="URL Directa de Fotografía (Opcional)"
-            type="url"
-            outlined
-            :rules="imageUrlRules"
-            hint="Enlace directo a una imagen accesible."
-          />
-
+         <!-- PHOTO URL & PREVIEW -->
+<div class="q-mb-md">
+  <q-input
+    v-model="form.photoUrl"
+    label="URL Directa de Fotografía (Opcional)"
+    type="url"
+    outlined
+    dense
+    :rules="imageUrlRules"
+    hint="Enlace directo a una imagen accesible."
+  />
+<!-- VISTA PREVIA DE LA FOTO (EN TIEMPO REAL) -->
+  <div v-if="form.photoUrl" class="column items-center q-my-md">
+    <div class="player-card-avatar shadow-2 q-mb-xs">
+      <img
+        :src="form.photoUrl"
+        alt="Vista previa de foto"
+        class="player-card-avatar-img"
+        @error="(e) => e.target.src = '/images/default-avatar.svg'"
+      />
+    </div>
+    <span class="text-caption text-grey-4 text-center">Vista previa de la fotografía ingresada</span>
+  </div> 
+</div>
+          
           <!-- FORM ACTIONS -->
           <div class="row justify-end gap-sm q-pt-md">
             <q-btn flat label="Cancelar" color="grey-5" @click="closeDialog" />
@@ -2308,7 +2323,8 @@ onMounted(async () => {
   border-radius: 6px;
 }
 
-/* Player Avatar and Name */
+/* ─── 1. AVATAR COMPACTO EN VISTA DE TABLA ─── */
+.player-table-avatar,
 .player-avatar-pill {
   width: 40px !important;
   height: 40px !important;
@@ -2327,6 +2343,7 @@ onMounted(async () => {
   background: rgba(15, 23, 42, 0.6);
 }
 
+.player-table-avatar-img,
 .player-avatar-image {
   display: block !important;
   width: 100% !important;
@@ -2640,22 +2657,37 @@ onMounted(async () => {
   text-align: center;
 }
 
+/* ─── 2. AVATAR GRANDE Y DESTACADO EN VISTA DE CUADRÍCULA (CARDS) ─── */
+.player-card-avatar,
 .player-card__avatar {
-  width: 112px;
-  height: 112px;
-  border-radius: 50%;
+  width: 84px !important;
+  height: 84px !important;
+  min-width: 84px !important;
+  min-height: 84px !important;
+  max-width: 84px !important;
+  max-height: 84px !important;
+  border-radius: 50% !important;
   border: 2px solid var(--tb-border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.05);
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: rgba(15, 23, 42, 0.85);
+  overflow: hidden !important;
+  padding: 0 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  flex-shrink: 0;
 }
 
-.player-card__avatar .player-avatar-image {
+.player-card-avatar-img {
   width: 100% !important;
   height: 100% !important;
-  border-radius: 50%;
+  min-width: 100% !important;
+  min-height: 100% !important;
+  border-radius: 50% !important;
   object-fit: cover !important;
+  display: block !important;
+  padding: 0 !important;
+  margin: 0 !important;
 }
 
 .player-card__crest {
@@ -2936,3 +2968,4 @@ onMounted(async () => {
   }
 }
 </style>
+
