@@ -37,8 +37,9 @@ const imageUrlRules = [
   (value) => isOptionalImageUrl(value) || 'Si la URL no es válida, se usará la imagen por defecto.',
 ]
 
-// Opciones de condición / estado del jugador
-const condicionOptions = [
+// Opciones editables manualmente en la ficha (Titular, Suplente, Lesionado)
+// Las sanciones (rojas y amarillas) son automáticas y se muestran como alertas informativas
+const editableCondicionOptions = [
   {
     label: 'Titular',
     value: 'TITULAR',
@@ -60,6 +61,153 @@ const condicionOptions = [
     color: 'warning',
     desc: 'Baja médica / En recuperación',
   },
+]
+
+// Modal y formulario para registrar detalle de lesión médica
+const injuryDialog = ref(false)
+const injuryForm = reactive({
+  reason: '',
+  startDate: '',
+  durationAmount: null,
+  durationUnit: 'Días',
+  recoveryDate: '',
+})
+
+const durationUnitOptions = ['Días', 'Semanas', 'Meses']
+
+const parseLocalDateString = (str) => {
+  if (!str) return null
+  const parts = String(str).split(/[-/]/).map(Number)
+  if (parts.length < 3 || parts.some((p) => Number.isNaN(p))) return null
+  return new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0)
+}
+
+const formatLocalDateString = (d) => {
+  if (!d || Number.isNaN(d.getTime())) return ''
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const calcRecoveryDate = () => {
+  if (!injuryForm.startDate || !injuryForm.durationAmount) return
+  const amount = Number(injuryForm.durationAmount)
+  if (!Number.isFinite(amount) || amount <= 0) return
+  const base = parseLocalDateString(injuryForm.startDate)
+  if (!base) return
+  if (injuryForm.durationUnit === 'Días') {
+    base.setDate(base.getDate() + amount)
+  } else if (injuryForm.durationUnit === 'Semanas') {
+    base.setDate(base.getDate() + (amount * 7))
+  } else if (injuryForm.durationUnit === 'Meses') {
+    base.setMonth(base.getMonth() + amount)
+  }
+  injuryForm.recoveryDate = formatLocalDateString(base)
+}
+
+watch(
+  [() => injuryForm.startDate, () => injuryForm.durationAmount, () => injuryForm.durationUnit],
+  () => {
+    calcRecoveryDate()
+  },
+)
+
+const openInjuryModal = () => {
+  injuryForm.reason = form.injuryReason || ''
+  // Restore duration parsed from stored string like '2 Semanas'
+  const stored = form.injuryDuration || ''
+  const match = stored.match(/^(\d+)\s*(Días|Semanas|Meses)$/i)
+  if (match) {
+    injuryForm.durationAmount = Number(match[1])
+    const unit = match[2]
+    injuryForm.durationUnit = unit.charAt(0).toUpperCase() + unit.slice(1).toLowerCase()
+  } else {
+    injuryForm.durationAmount = null
+    injuryForm.durationUnit = 'Días'
+  }
+  if (form.recoveryDate) {
+    const d = parseLocalDateString(form.recoveryDate) || new Date(form.recoveryDate)
+    injuryForm.recoveryDate = !Number.isNaN(d.getTime()) ? formatLocalDateString(d) : ''
+  } else {
+    injuryForm.recoveryDate = ''
+  }
+  // Derive startDate from recoveryDate and duration if both exist
+  if (injuryForm.recoveryDate && injuryForm.durationAmount) {
+    const rDate = parseLocalDateString(injuryForm.recoveryDate)
+    if (rDate && !Number.isNaN(rDate.getTime())) {
+      if (injuryForm.durationUnit === 'Días') rDate.setDate(rDate.getDate() - injuryForm.durationAmount)
+      else if (injuryForm.durationUnit === 'Semanas') rDate.setDate(rDate.getDate() - (injuryForm.durationAmount * 7))
+      else if (injuryForm.durationUnit === 'Meses') rDate.setMonth(rDate.getMonth() - injuryForm.durationAmount)
+      injuryForm.startDate = formatLocalDateString(rDate)
+    }
+  } else {
+    injuryForm.startDate = formatLocalDateString(new Date())
+  }
+  if (injuryForm.startDate && injuryForm.durationAmount) {
+    calcRecoveryDate()
+  }
+  injuryDialog.value = true
+}
+
+const confirmInjuryDetails = () => {
+  if (!injuryForm.reason.trim()) {
+    $q.notify({ type: 'warning', message: 'Indica el motivo o descripción de la lesión médica.' })
+    return
+  }
+  if (!injuryForm.startDate) {
+    $q.notify({ type: 'warning', message: 'Selecciona la fecha de inicio de la lesión.' })
+    return
+  }
+  if (!injuryForm.durationAmount || Number(injuryForm.durationAmount) < 1) {
+    $q.notify({ type: 'warning', message: 'Ingresa la cantidad de tiempo estimado de baja (mínimo 1).' })
+    return
+  }
+  if (!injuryForm.recoveryDate) {
+    $q.notify({ type: 'warning', message: 'La fecha de retorno no pudo calcularse. Verifica los datos.' })
+    return
+  }
+  form.status = 'LESIONADO'
+  form.injuryReason = injuryForm.reason.trim()
+  form.injuryDuration = `${injuryForm.durationAmount} ${injuryForm.durationUnit}`
+  form.recoveryDate = injuryForm.recoveryDate
+  injuryDialog.value = false
+  $q.notify({ type: 'positive', message: 'Detalle de baja médica registrado correctamente.' })
+}
+
+const handleSelectCondition = (val) => {
+  // ── Bloqueo de negocio: inhabilitado no puede ser TITULAR ni SUPLENTE ──
+  if ((val === 'TITULAR' || val === 'SUPLENTE') && isCurrentPlayerInhabilitated.value) {
+    $q.notify({
+      type: 'warning',
+      icon: 'lock',
+      message: inhabilitationReasonText.value || 'El jugador está inhabilitado. Debe finalizar su período de baja o sanción antes de volver a la alineación.',
+      timeout: 4000,
+    })
+    return
+  }
+  if (val === 'LESIONADO') {
+    openInjuryModal()
+  } else {
+    form.status = val
+    if (val === 'TITULAR' || val === 'SUPLENTE') {
+      form.injuryReason = ''
+      form.injuryDuration = ''
+      form.recoveryDate = null
+    }
+  }
+}
+
+const formatDisplayDate = (dateVal) => {
+  if (!dateVal) return 'Por determinar'
+  const d = new Date(dateVal)
+  if (Number.isNaN(d.getTime())) return String(dateVal)
+  return new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }).format(d)
+}
+
+// Opciones de condición / estado del jugador para filtros
+const condicionOptions = [
+  ...editableCondicionOptions,
   {
     label: 'Sancionado (Roja Directa)',
     value: 'SANCIONADO_ROJA',
@@ -151,17 +299,140 @@ const getPlayerReturnLabel = (player) => {
   return ''
 }
 
+const jerseyNameUserCustomized = ref(false)
+
 const form = reactive({
   name: '',
+  firstName: '',
+  middleName: '',
+  lastName: '',
+  secondLastName: '',
+  jerseyName: '',
   number: null,
-  position: 'Delantero',
+  position: '',
   team: '',
   status: 'TITULAR',
   photoUrl: '',
+  injuryReason: '',
+  injuryDuration: '',
+  recoveryDate: null,
   goals: 0,
   assists: 0,
   yellowCards: 0,
   redCards: 0,
+})
+
+const onNamePartsChanged = () => {
+  form.name = [form.firstName, form.middleName, form.lastName, form.secondLastName]
+    .map((s) => (s || '').trim())
+    .filter(Boolean)
+    .join(' ')
+
+  if (!jerseyNameUserCustomized.value) {
+    const suggested = (form.lastName || form.firstName || '').trim().toUpperCase()
+    form.jerseyName = suggested
+  }
+}
+
+const onJerseyNameInput = (val) => {
+  const upper = String(val || '').toUpperCase()
+  jerseyNameUserCustomized.value = Boolean(upper && upper.trim().length > 0)
+  form.jerseyName = upper
+}
+
+const isCurrentPlayerInhabilitated = computed(() => {
+  if (!editingId.value) return false
+  const currentStatus = String(form.status || '').toUpperCase()
+  return currentStatus === 'LESIONADO' || currentStatus.startsWith('SANCIONADO')
+})
+
+const inhabilitationReasonText = computed(() => {
+  const currentStatus = String(form.status || '').toUpperCase()
+  if (currentStatus === 'LESIONADO') {
+    return 'Jugador en baja médica por lesión activa. Su condición no puede ser cambiada a Titular o Suplente mientras esté en proceso de recuperación.'
+  }
+  if (currentStatus.startsWith('SANCIONADO')) {
+    return 'Jugador con sanción disciplinaria oficial activa. Se encuentra inhabilitado para formar parte de la alineación titular o de suplentes.'
+  }
+  return ''
+})
+
+const jerseyTeam = computed(() => {
+  const targetId = getCanonicalTeamId(form.team)
+  if (!targetId) return null
+  return store.teams.find((t) => String(t._id || t.id) === String(targetId)) || null
+})
+
+const jerseyPrimaryColor = computed(() => {
+  return jerseyTeam.value?.primaryColor || jerseyTeam.value?.colorPrimario || '#1e3a8a'
+})
+
+const jerseySecondaryColor = computed(() => {
+  return jerseyTeam.value?.secondaryColor || jerseyTeam.value?.colorSecundario || '#facc15'
+})
+
+const jerseyTeamName = computed(() => {
+  return jerseyTeam.value?.name || jerseyTeam.value?.nombre || 'MI CLUB'
+})
+
+const jerseyTeamLogo = computed(() => {
+  return jerseyTeam.value?.logoUrl || jerseyTeam.value?.escudo_url || getDefaultTeamLogo(jerseyTeam.value)
+})
+
+const jerseyCardStyle = computed(() => {
+  const pColor = jerseyPrimaryColor.value
+  const sColor = jerseySecondaryColor.value
+  return {
+    background: `linear-gradient(145deg, ${pColor} 0%, rgba(15, 23, 42, 0.95) 100%)`,
+    borderColor: sColor,
+  }
+})
+
+const jerseyTextColor = computed(() => {
+  return jerseySecondaryColor.value || '#ffffff'
+})
+
+const jerseyNumberShadow = computed(() => {
+  return '0 4px 14px rgba(0, 0, 0, 0.8), 0 0 2px rgba(255, 255, 255, 0.4)'
+})
+
+const editingPlayerSanctionInfo = computed(() => {
+  if (!editingId.value) return null
+  const player = store.players.find((p) => String(p._id || p.id) === String(editingId.value))
+  const currentStatus = String(form.status || player?.status || player?.condicion || '').toUpperCase()
+  const isRed = currentStatus.includes('ROJA') || currentStatus === 'EXPULSADO'
+  const isYellow = currentStatus.includes('AMARILLA') || currentStatus.includes('AMARILLAS')
+  if (!isRed && !isYellow && !currentStatus.startsWith('SANCIONADO')) return null
+
+  let remainingText = ''
+  if (player?.suspendedUntilMatchday !== null && player?.suspendedUntilMatchday !== undefined && player?.suspendedUntilMatchday !== '') {
+    const until = Number(player.suspendedUntilMatchday)
+    const currentMaxMatchday = Math.max(...store.matches.filter((m) => m.status === 'FINISHED').map((m) => Number(m.matchday) || 0), 0)
+    const matchesRemaining = Math.max(1, until - currentMaxMatchday)
+    remainingText = `Partidos de sanción restantes: ${matchesRemaining} fecha(s) (inhabilitado hasta J${until}, habilitado desde J${until + 1}).`
+  } else if (player?.suspensionReturnDate) {
+    const returnDate = new Date(player.suspensionReturnDate)
+    if (!Number.isNaN(returnDate.getTime())) {
+      remainingText = `Retorno estimado a partir del ${new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }).format(returnDate)}.`
+    }
+  }
+
+  if (!remainingText) {
+    remainingText = isRed
+      ? 'Suspensión disciplinaria activa por tarjeta roja directa (partidos restantes pendientes de cumplimiento).'
+      : 'Suspensión disciplinaria activa por acumulación de 5 tarjetas amarillas (1 fecha de suspensión reglamentaria).'
+  }
+
+  return {
+    isRed,
+    isYellow,
+    title: isRed ? 'Sanción Disciplinaria Oficial: Tarjeta Roja Directa' : 'Sanción Disciplinaria Oficial: Acumulación de Amarillas',
+    detail: remainingText,
+    icon: isRed ? 'report' : 'warning',
+    color: isRed ? 'negative' : 'amber-8',
+    bgColor: isRed ? 'rgba(239, 68, 68, 0.14)' : 'rgba(245, 158, 11, 0.14)',
+    borderColor: isRed ? 'rgba(239, 68, 68, 0.45)' : 'rgba(245, 158, 11, 0.45)',
+  }
 })
 
 const teamFilterOptions = computed(() => [
@@ -215,6 +486,52 @@ const teamOptions = computed(() => teamsOptions.value.map((team) => ({
   value: String(team._id || team.id || ''),
   logoUrl: team.logoUrl || team.escudo_url || team.logo || '/images/default-team.svg',
 })))
+
+const filteredTeamFilterOptions = ref([])
+watch(teamFilterOptions, (val) => {
+  filteredTeamFilterOptions.value = val || []
+}, { immediate: true })
+
+const filterTeamFilter = (val, update) => {
+  if (!val || !val.trim()) {
+    update(() => {
+      filteredTeamFilterOptions.value = teamFilterOptions.value
+    })
+    return
+  }
+  update(() => {
+    const needle = val.toLowerCase().trim()
+    filteredTeamFilterOptions.value = teamFilterOptions.value.filter(
+      (opt) => opt.label.toLowerCase().includes(needle)
+    )
+  })
+}
+
+const filteredPlayerCreationTeamOptions = ref([])
+watch(teamOptions, (val) => {
+  filteredPlayerCreationTeamOptions.value = val || []
+}, { immediate: true })
+
+const filterPlayerCreationTeam = (val, update) => {
+  if (!val || !val.trim()) {
+    update(() => {
+      filteredPlayerCreationTeamOptions.value = teamOptions.value
+    })
+    return
+  }
+  update(() => {
+    const needle = val.toLowerCase().trim()
+    filteredPlayerCreationTeamOptions.value = teamOptions.value.filter(
+      (opt) => opt.label.toLowerCase().includes(needle)
+    )
+  })
+}
+
+const currentEditingTeam = computed(() => {
+  if (!form.team) return null
+  const tId = getCanonicalTeamId(form.team)
+  return store.teams.find((team) => String(team._id || team.id) === String(tId)) || null
+})
 const occupiedNumbersByTeam = computed(() => {
   const targetValue = String(form.team || '').trim().toLowerCase()
   if (!targetValue) return new Set()
@@ -407,10 +724,8 @@ const saveInlineEdit = async (player) => {
     notifyPlayerLiveEditBlocked()
     return
   }
-  if (!inlineForm.name.trim()) {
-    $q.notify({ type: 'warning', message: 'El nombre del jugador no puede estar vacío.' })
-    return
-  }
+  // Nota: el nombre del jugador NO se envía desde la edición rápida.
+  // Los nombres/apellidos solo pueden modificarse desde la Tarjeta de Perfil completa.
 
   const newNum = Number(inlineForm.number)
   if (!newNum || newNum < 1 || newNum > 99) {
@@ -436,15 +751,19 @@ const saveInlineEdit = async (player) => {
 
   inlineEditSaving.value = true
   try {
+    // Solo se actualizan: dorsal, posición y condición. El nombre es inmutable aquí.
+    const playerName = player.name || player.nombre || ''
     const payload = {
-      name: inlineForm.name.trim(),
       number: newNum,
+      dorsal: newNum,
       position: inlineForm.position,
+      posicion: inlineForm.position,
       team: inlineForm.team,
       status: inlineForm.status,
+      condicion: inlineForm.status,
     }
     await store.updatePlayer(player._id, payload)
-    $q.notify({ type: 'positive', message: `Jugador ${payload.name} actualizado.` })
+    $q.notify({ type: 'positive', message: `Jugador ${playerName} actualizado.` })
     inlineEditId.value = null
   } catch (error) {
     $q.notify({ type: 'negative', message: error.response?.data?.message || 'Error al actualizar jugador.' })
@@ -452,6 +771,7 @@ const saveInlineEdit = async (player) => {
     inlineEditSaving.value = false
   }
 }
+
 
 const goToPlayerTeam = (player) => {
   const team = getPlayerTeam(player)
@@ -519,24 +839,30 @@ const filteredPlayers = computed(() => {
 const resetForm = () => {
   Object.assign(form, {
     name: '',
+    firstName: '',
+    middleName: '',
+    lastName: '',
+    secondLastName: '',
+    jerseyName: '',
     number: null,
-    position: 'Delantero',
+    position: '',
     team: '',
     status: 'TITULAR',
     photoUrl: '',
+    injuryReason: '',
+    injuryDuration: '',
+    recoveryDate: null,
     goals: 0,
     assists: 0,
     yellowCards: 0,
     redCards: 0,
   })
+  jerseyNameUserCustomized.value = false
   editingId.value = null
 }
 
 const openCreateDialog = () => {
   resetForm()
-  if (store.teams.length) {
-    form.team = store.teams[0]._id
-  }
   dialog.value = true
 }
 
@@ -546,13 +872,71 @@ const openEditDialog = (player) => {
     return
   }
   const currentTeam = player.team?._id || player.teamId || player.team
+
+  // ── Recuperar campos estructurados de nombre, con fallback para jugadores legados ──
+  // Formato legacy: 'APELLIDO Nombre' → primera palabra es apellido, segunda es nombre
+  const toTitleCase = (str) => {
+    if (!str) return ''
+    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase()
+  }
+
+  const nameParts = (player.name || player.nombre || '').trim().split(/\s+/)
+  const hasStructured = Boolean(player.firstName || player.primerNombre || player.lastName || player.primerApellido)
+
+  let resolvedLastName, resolvedFirstName, resolvedMiddleName, resolvedSecondLastName
+
+  if (hasStructured) {
+    // Jugador con campos estructurados ya guardados → normalizar Title Case
+    resolvedFirstName = toTitleCase(player.firstName || player.primerNombre || '')
+    resolvedMiddleName = toTitleCase(player.middleName || player.segundoNombre || '')
+    resolvedLastName = toTitleCase(player.lastName || player.primerApellido || '')
+    resolvedSecondLastName = toTitleCase(player.secondLastName || player.segundoApellido || '')
+  } else {
+    // Jugador legacy: primera palabra = Apellido, segunda = Nombre
+    if (nameParts.length === 1) {
+      resolvedLastName = toTitleCase(nameParts[0])
+      resolvedFirstName = ''
+      resolvedMiddleName = ''
+      resolvedSecondLastName = ''
+    } else if (nameParts.length === 2) {
+      resolvedLastName = toTitleCase(nameParts[0])
+      resolvedFirstName = toTitleCase(nameParts[1])
+      resolvedMiddleName = ''
+      resolvedSecondLastName = ''
+    } else if (nameParts.length === 3) {
+      resolvedLastName = toTitleCase(nameParts[0])
+      resolvedFirstName = toTitleCase(nameParts[1])
+      resolvedSecondLastName = toTitleCase(nameParts[2])
+      resolvedMiddleName = ''
+    } else {
+      // 4+ palabras: APELLIDO1 APELLIDO2 Nombre SegundoNombre
+      resolvedLastName = toTitleCase(nameParts[0])
+      resolvedSecondLastName = toTitleCase(nameParts[1])
+      resolvedFirstName = toTitleCase(nameParts[2])
+      resolvedMiddleName = toTitleCase(nameParts.slice(3).join(' '))
+    }
+  }
+
+  const resolvedJerseyName = player.jerseyName || player.nombreCamiseta || (resolvedLastName || resolvedFirstName).toUpperCase()
+
+
+  jerseyNameUserCustomized.value = Boolean(player.jerseyName || player.nombreCamiseta)
+
   Object.assign(form, {
     name: player.name || player.nombre || '',
+    firstName: resolvedFirstName,
+    middleName: resolvedMiddleName,
+    lastName: resolvedLastName,
+    secondLastName: resolvedSecondLastName,
+    jerseyName: resolvedJerseyName,
     number: player.number ?? player.dorsal ?? null,
-    position: player.position || player.posicion || 'Delantero',
+    position: player.position || player.posicion || '',
     team: String(getCanonicalTeamId(currentTeam) || ''),
     status: player.status || player.condicion || 'TITULAR',
     photoUrl: player.photoUrl || '',
+    injuryReason: player.injuryReason || '',
+    injuryDuration: player.injuryDuration || '',
+    recoveryDate: player.recoveryDate || null,
     goals: player.goals ?? player.goles ?? 0,
     assists: player.assists ?? player.asistencias ?? 0,
     yellowCards: player.yellowCards ?? player.tarjetasAmarillas ?? 0,
@@ -580,8 +964,31 @@ const savePlayer = async () => {
     }
   }
   if (!form.team) {
-    $q.notify({ type: 'warning', message: 'Selecciona el equipo al que pertenece el jugador.' })
+    $q.notify({ type: 'warning', message: 'Selecciona obligatoriamente el equipo al que pertenece el jugador.' })
     return
+  }
+  if (!form.firstName || !form.firstName.trim()) {
+    $q.notify({ type: 'warning', message: 'El Primer Nombre del jugador es obligatorio.' })
+    return
+  }
+  if (!form.lastName || !form.lastName.trim()) {
+    $q.notify({ type: 'warning', message: 'El Primer Apellido del jugador es obligatorio.' })
+    return
+  }
+  if (!form.position) {
+    $q.notify({ type: 'warning', message: 'Selecciona obligatoriamente la posición del jugador en el campo.' })
+    return
+  }
+
+  // Reconstruir nombre completo desde partes estructuradas
+  form.name = [form.firstName, form.middleName, form.lastName, form.secondLastName]
+    .map((s) => (s || '').trim())
+    .filter(Boolean)
+    .join(' ')
+
+  // Auto-generar jerseyName si no fue personalizado
+  if (!form.jerseyName || !form.jerseyName.trim()) {
+    form.jerseyName = (form.lastName || form.firstName || '').trim().toUpperCase()
   }
 
   saving.value = true
@@ -600,25 +1007,50 @@ const savePlayer = async () => {
   }
 
   const payload = {
-    ...form,
     team: String(form.team),
     name: form.name.trim(),
     nombre: form.name.trim(),
+    // Campos estructurados de nombre
+    firstName: (form.firstName || '').trim(),
+    primerNombre: (form.firstName || '').trim(),
+    middleName: (form.middleName || '').trim(),
+    segundoNombre: (form.middleName || '').trim(),
+    lastName: (form.lastName || '').trim(),
+    primerApellido: (form.lastName || '').trim(),
+    secondLastName: (form.secondLastName || '').trim(),
+    segundoApellido: (form.secondLastName || '').trim(),
+    jerseyName: (form.jerseyName || (form.lastName || form.firstName || '').toUpperCase()).trim().toUpperCase(),
+    nombreCamiseta: (form.jerseyName || (form.lastName || form.firstName || '').toUpperCase()).trim().toUpperCase(),
     number: nextNumber,
     dorsal: nextNumber,
     position: form.position,
     posicion: form.position,
-    status: form.status,
-    condicion: form.status,
     photoUrl: form.photoUrl.trim(),
-    goals: Math.max(0, Number(form.goals) || 0),
-    goles: Math.max(0, Number(form.goals) || 0),
-    assists: Math.max(0, Number(form.assists) || 0),
-    asistencias: Math.max(0, Number(form.assists) || 0),
-    yellowCards: Math.max(0, Number(form.yellowCards) || 0),
-    tarjetasAmarillas: Math.max(0, Number(form.yellowCards) || 0),
-    redCards: Math.max(0, Number(form.redCards) || 0),
-    tarjetasRojas: Math.max(0, Number(form.redCards) || 0),
+  }
+
+  if (editingId.value) {
+    payload.status = form.status
+    payload.condicion = form.status
+    if (form.status === 'LESIONADO') {
+      payload.injuryReason = form.injuryReason || 'Baja médica'
+      payload.injuryDuration = form.injuryDuration || 'Tiempo en evaluación'
+      payload.recoveryDate = form.recoveryDate || null
+    } else {
+      payload.injuryReason = ''
+      payload.injuryDuration = ''
+      payload.recoveryDate = null
+    }
+  } else {
+    payload.status = 'TITULAR'
+    payload.condicion = 'TITULAR'
+    payload.goals = 0
+    payload.goles = 0
+    payload.assists = 0
+    payload.asistencias = 0
+    payload.yellowCards = 0
+    payload.tarjetasAmarillas = 0
+    payload.redCards = 0
+    payload.tarjetasRojas = 0
   }
 
   try {
@@ -741,7 +1173,12 @@ onMounted(async () => {
         <div class="col-12 col-sm-6 col-md-3">
           <q-select
             v-model="teamFilter"
-            :options="teamFilterOptions"
+            :options="filteredTeamFilterOptions"
+            use-input
+            fill-input
+            hide-selected
+            input-debounce="0"
+            @filter="filterTeamFilter"
             emit-value
             map-options
             outlined
@@ -851,7 +1288,7 @@ onMounted(async () => {
         <template #body-cell-player="props">
           <q-td :props="props">
             <div v-if="inlineEditId === props.row._id" class="row items-center no-wrap gap-sm">
-              <div class="sport-crest-container player-avatar-pill">
+              <div class="player-avatar-pill">
                 <img
                   :src="props.row.photoUrl || props.row.foto_url || '/images/default-avatar.svg'"
                   :alt="`Escudo de ${props.row.name || props.row.nombre}`"
@@ -860,20 +1297,52 @@ onMounted(async () => {
                   @error="handlePlayerAvatarError"
                 />
               </div>
-              <q-input
-                v-model="inlineForm.name"
-                dense
-                outlined
-                class="full-width"
-                :disable="isPlayerInLiveMatch(props.row)"
-                placeholder="Nombre del jugador"
-                autofocus
-                @keydown.enter="saveInlineEdit(props.row)"
-                @keydown.esc="cancelInlineEdit"
-              />
+
+              <!-- NOMBRE BLOQUEADO EN EDICIÓN RÁPIDA (SOLO LECTURA) -->
+              <div class="inline-name-locked-wrap">
+                <q-input
+                  :model-value="props.row.name || props.row.nombre"
+                  dense
+                  outlined
+                  readonly
+                  disable
+                  class="inline-name-locked-input"
+                  title="Campo bloqueado en edición rápida"
+                >
+                  <template #prepend>
+                    <q-icon name="lock" color="amber-5" size="15px" />
+                  </template>
+                  <template #append>
+                    <q-badge color="dark" text-color="amber-4" class="text-caption q-px-xs" style="font-size: 10px; border: 1px solid rgba(245, 158, 11, 0.4);">
+                      Solo lectura
+                    </q-badge>
+                  </template>
+                  <q-tooltip anchor="top middle" self="bottom middle" max-width="280px">
+                    <div class="text-caption q-pa-xs">
+                      🔒 Nombre e identidad bloqueados en edición rápida para proteger apellidos compuestos. Modifícalos desde la Tarjeta de Perfil principal.
+                    </div>
+                  </q-tooltip>
+                </q-input>
+
+                <!-- ENLACE DE REDIRECCIÓN A LA TARJETA DE PERFIL -->
+                <div class="inline-name-redirect-hint row items-center q-gutter-x-xs q-mt-xs">
+                  <q-icon name="info" size="12px" color="amber-5" />
+                  <span class="text-caption text-grey-4">
+                    Para modificar la identidad o nombres del jugador, por favor hazlo desde su
+                    <button
+                      type="button"
+                      class="inline-redirect-link"
+                      @click.stop="cancelInlineEdit(); openEditDialog(props.row)"
+                    >
+                      Tarjeta de Perfil principal
+                    </button>.
+                  </span>
+                </div>
+              </div>
             </div>
+
             <div v-else class="row items-center no-wrap gap-md">
-              <div class="sport-crest-container player-avatar-pill">
+              <div class="player-avatar-pill">
                 <img
                   :src="props.row.photoUrl || props.row.foto_url || '/images/default-avatar.svg'"
                   :alt="`Foto de ${props.row.name || props.row.nombre}`"
@@ -882,7 +1351,7 @@ onMounted(async () => {
                   @error="handlePlayerAvatarError"
                 />
               </div>
-              <div class="player-name-bold">{{ props.row.name || props.row.nombre }}</div>
+              <div class="player-name-bold q-ml-md">{{ props.row.name || props.row.nombre }}</div>
             </div>
           </q-td>
         </template>
@@ -907,27 +1376,14 @@ onMounted(async () => {
           </q-td>
         </template>
 
-        <!-- TEAM (NORMAL O INLINE SELECT) -->
+        <!-- TEAM (NORMAL O INLINE FIJO CON CANDADO) -->
         <template #body-cell-team="props">
           <q-td :props="props">
-            <div v-if="inlineEditId === props.row._id">
-              <q-select
-                v-model="inlineForm.team"
-                :options="teamOptions"
-                emit-value
-                map-options
-                dense
-                outlined
-                style="min-width: 170px;"
-                :disable="isPlayerInLiveMatch(props.row)"
-              />
-            </div>
             <div
-              v-else
               class="team-badge-pill"
               :class="{ 'team-badge-pill--interactive': Boolean(getPlayerTeam(props.row)) }"
               @click="goToPlayerTeam(props.row)"
-              :title="getPlayerTeam(props.row) ? `Ver plantel oficial de ${getPlayerTeamName(props.row)}` : ''"
+              :title="inlineEditId === props.row._id ? 'Equipo no modificable durante la temporada' : (getPlayerTeam(props.row) ? `Ver plantel oficial de ${getPlayerTeamName(props.row)}` : '')"
             >
               <div class="sport-crest-container team-pill-crest">
                 <ImagePreview
@@ -940,7 +1396,18 @@ onMounted(async () => {
               </div>
               <span class="team-pill-name">{{ getPlayerTeamName(props.row) }}</span>
               <q-icon
-                v-if="getPlayerTeam(props.row)"
+                v-if="inlineEditId === props.row._id"
+                name="lock"
+                size="12px"
+                color="amber-4"
+                class="q-ml-xs"
+              >
+                <q-tooltip anchor="top middle" self="bottom middle">
+                  Para transferencias se deben completar los 38 partidos
+                </q-tooltip>
+              </q-icon>
+              <q-icon
+                v-else-if="getPlayerTeam(props.row)"
                 name="open_in_new"
                 size="12px"
                 class="q-ml-xs hover-icon"
@@ -1091,7 +1558,7 @@ onMounted(async () => {
             <span class="dorsal-blue-box text-weight-bolder player-card__number">
               #{{ player.number ?? player.dorsal ?? '-' }}
             </span>
-            <div class="sport-crest-container player-card__avatar shadow-2">
+            <div class="player-avatar-pill player-card__avatar shadow-2">
               <img
                 :src="player?.photoUrl || player?.foto_url || player?.photo || '/images/default-avatar.svg'"
                 :alt="`Foto de ${player.name || player.nombre}`"
@@ -1218,8 +1685,8 @@ onMounted(async () => {
                 <q-icon name="sports_soccer" size="22px" />
               </div>
               <div>
-                <div class="text-h6 text-weight-bold">{{ editingId ? 'Editar Jugador' : 'Nuevo Jugador' }}</div>
-                <div class="text-caption text-grey-5">Ficha técnica y dorsal en el plantel</div>
+                <div class="text-h6 text-weight-bold">{{ editingId ? 'Tarjeta de Perfil: ' + (form.name || 'Editar Jugador') : 'Nuevo Jugador' }}</div>
+                <div class="text-caption text-grey-5">Tarjeta de Perfil Principal · Identidad, dorsal y ficha técnica</div>
               </div>
             </div>
             <q-btn flat round dense icon="close" color="grey-5" @click="closeDialog" />
@@ -1227,11 +1694,164 @@ onMounted(async () => {
         </q-card-section>
 
         <q-form @submit.prevent="savePlayer" class="q-pa-lg q-gutter-y-lg">
-          <q-input v-model="form.name" label="Nombre Completo del Jugador *" outlined required />
 
-          <!-- TEAM SELECTOR -->
+          <!-- ══ NOMBRE ESTRUCTURADO DEL JUGADOR ══ -->
           <div>
-            <div class="text-subtitle2 text-weight-bold q-mb-xs text-white">Equipo Asignado</div>
+            <div class="text-subtitle2 text-weight-bold text-white q-mb-sm">
+              Nombre del Jugador
+            </div>
+            <div class="row q-col-gutter-sm">
+              <!-- Primer Nombre (Obligatorio) -->
+              <div class="col-12 col-sm-6">
+                <q-input
+                  v-model="form.firstName"
+                  label="Primer Nombre *"
+                  outlined
+                  dense
+                  :rules="[(v) => !!v?.trim() || 'El primer nombre es obligatorio']"
+                  @update:model-value="onNamePartsChanged"
+                />
+              </div>
+              <!-- Segundo Nombre (Opcional) -->
+              <div class="col-12 col-sm-6">
+                <q-input
+                  v-model="form.middleName"
+                  label="Segundo Nombre (opcional)"
+                  outlined
+                  dense
+                  @update:model-value="onNamePartsChanged"
+                />
+              </div>
+              <!-- Primer Apellido (Obligatorio) -->
+              <div class="col-12 col-sm-6">
+                <q-input
+                  v-model="form.lastName"
+                  label="Primer Apellido *"
+                  outlined
+                  dense
+                  :rules="[(v) => !!v?.trim() || 'El primer apellido es obligatorio']"
+                  @update:model-value="onNamePartsChanged"
+                />
+              </div>
+              <!-- Segundo Apellido (Opcional) -->
+              <div class="col-12 col-sm-6">
+                <q-input
+                  v-model="form.secondLastName"
+                  label="Segundo Apellido (opcional)"
+                  outlined
+                  dense
+                  @update:model-value="onNamePartsChanged"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- ══ NOMBRE EN LA CAMISETA (DORSAL) + VISTA PREVIA ══ -->
+          <div>
+            <div class="text-subtitle2 text-weight-bold text-white q-mb-xs row items-center gap-xs">
+              <q-icon name="style" size="18px" color="primary" />
+              Nombre en la Camiseta (Dorsal)
+              <span class="text-caption text-grey-5 text-lowercase">(se imprime en MAYÚSCULAS)</span>
+            </div>
+            <q-input
+              :model-value="form.jerseyName"
+              label="Nombre en camiseta / Apodo deportivo"
+              outlined
+              dense
+              hint="Se convierte automáticamente a mayúsculas. Por defecto se usa el apellido."
+              @update:model-value="onJerseyNameInput"
+            >
+              <template #prepend>
+                <q-icon name="style" color="grey-5" size="18px" />
+              </template>
+            </q-input>
+
+            <!-- VISTA PREVIA DE CAMISETA -->
+            <div v-if="form.jerseyName || form.number" class="jersey-preview-container q-mt-md">
+              <div class="jersey-preview-card" :style="jerseyCardStyle">
+                <!-- Textura diagonal sutil -->
+                <div class="jersey-texture-pattern" />
+                <!-- Cuello tipo V -->
+                <div class="jersey-collar" :style="{ borderColor: jerseySecondaryColor }" />
+                <!-- Logo del equipo -->
+                <div class="jersey-club-crest-wrap">
+                  <img
+                    v-if="jerseyTeamLogo"
+                    :src="jerseyTeamLogo"
+                    :alt="jerseyTeamName"
+                    class="jersey-club-logo"
+                    @error="$event.target.style.display='none'"
+                  />
+                  <q-icon v-else name="shield" size="26px" :style="{ color: jerseySecondaryColor }" />
+                </div>
+                <!-- Nombre impreso en la espalda -->
+                <div
+                  class="jersey-name-printed"
+                  :style="{ color: jerseyTextColor, textShadow: jerseyNumberShadow }"
+                >
+                  {{ form.jerseyName || '——' }}
+                </div>
+                <!-- Número impreso -->
+                <div
+                  class="jersey-number-printed"
+                  :style="{ color: jerseyTextColor, textShadow: jerseyNumberShadow }"
+                >
+                  {{ form.number || '?' }}
+                </div>
+                <!-- Nombre del club en parte inferior -->
+                <div class="jersey-club-tag" :style="{ color: jerseySecondaryColor }">
+                  {{ jerseyTeamName }}
+                </div>
+              </div>
+              <div class="text-caption text-grey-5 text-center q-mt-sm">
+                ↑ Vista previa del dorsal en tiempo real
+              </div>
+            </div>
+          </div>
+
+          <!-- TEAM SELECTOR / INFORMACIÓN FIJA DE EQUIPO -->
+          <div v-if="!editingId">
+            <div class="row items-center justify-between q-mb-xs">
+              <div class="text-subtitle2 text-weight-bold text-white">Equipo Asignado *</div>
+              <span v-if="!form.team" class="text-caption text-amber-4 text-weight-bold">
+                ⚠️ Selecciona un equipo (obligatorio)
+              </span>
+            </div>
+
+            <!-- SELECTOR BUSCABLE EN ORDEN ALFABÉTICO -->
+            <q-select
+              v-model="form.team"
+              :options="filteredPlayerCreationTeamOptions"
+              use-input
+              fill-input
+              hide-selected
+              input-debounce="0"
+              emit-value
+              map-options
+              outlined
+              dense
+              label="Escribe el nombre del club para buscar..."
+              
+              @filter="filterPlayerCreationTeam"
+              class="q-mb-sm"
+            >
+              <template #prepend>
+                <q-icon name="shield" color="primary" />
+              </template>
+              <template #option="scope">
+                <q-item v-bind="scope.itemProps">
+                  <q-item-section avatar v-if="scope.opt.logoUrl">
+                    <q-avatar size="24px">
+                      <img :src="scope.opt.logoUrl" />
+                    </q-avatar>
+                  </q-item-section>
+                  <q-item-section>
+                    <q-item-label class="text-weight-medium">{{ scope.opt.label }}</q-item-label>
+                  </q-item-section>
+                </q-item>
+              </template>
+            </q-select>
+
             <div class="selector-grid team-selector-grid">
               <button
                 v-for="teamOption in teamOptions"
@@ -1249,9 +1869,51 @@ onMounted(async () => {
             </div>
           </div>
 
+          <div v-else class="locked-team-card q-pa-lg">
+            <!-- 1. ESCUDO GRANDE Y CENTRADO EN LA PARTE SUPERIOR -->
+            <div class="flex column items-center">
+              <div class="locked-team-crest-wrap">
+                <ImagePreview
+                  :src="currentEditingTeam?.logoUrl || currentEditingTeam?.escudo_url"
+                  :fallback="getDefaultTeamLogo(currentEditingTeam || form.team)"
+                  :alt="currentEditingTeam?.name || 'Escudo del Club'"
+                  width="78px"
+                  height="78px"
+                />
+              </div>
+
+              <!-- 2. NOMBRE DEL EQUIPO Y CÓDIGO JUSTO DEBAJO -->
+              <div class="text-h5 text-weight-bolder text-white text-center q-mt-md">
+                {{ currentEditingTeam?.name || currentEditingTeam?.nombre || getPlayerTeamName({ team: form.team }) || 'Equipo Asignado' }}
+              </div>
+              <div class="text-subtitle2 text-grey-4 text-center q-mt-xs">
+                {{ currentEditingTeam?.shortName ? `Código: ${currentEditingTeam.shortName}` : 'Plantilla Oficial' }}
+              </div>
+
+              <!-- 3. INFORMACIÓN DEL EQUIPO -->
+              <div class="text-caption text-weight-bold text-amber-4 row items-center justify-center gap-xs q-mt-sm">
+                <q-icon name="lock" size="14px" />
+                <span>Equipo Oficial Registrado · Temporada Regular</span>
+              </div>
+            </div>
+
+            <!-- 4. ALERTA DE RESTRICCIÓN DE TEMPORADA -->
+            <div class="transfer-lock-banner q-mt-md q-pa-md row items-start no-wrap gap-sm text-left">
+              <q-icon name="info" color="amber-4" size="20px" class="q-mt-xs flex-shrink-0" />
+              <div class="text-caption text-amber-2 leading-relaxed">
+                El jugador pertenece a este club. Para realizar transferencias o cambios de equipo, se debe finalizar la temporada actual (completar los 38 partidos reglamentarios).
+              </div>
+            </div>
+          </div>
+
           <!-- POSITION SELECTOR -->
           <div>
-            <div class="text-subtitle2 text-weight-bold q-mb-xs text-white">Posición en el Campo</div>
+            <div class="row items-center justify-between q-mb-xs">
+              <div class="text-subtitle2 text-weight-bold text-white">Posición en el Campo *</div>
+              <span v-if="!form.position" class="text-caption text-amber-4 text-weight-bold">
+                ⚠️ Selecciona una posición (obligatorio)
+              </span>
+            </div>
             <div class="selector-grid position-selector-grid">
               <button
                 v-for="pos in positionOptions"
@@ -1266,24 +1928,104 @@ onMounted(async () => {
             </div>
           </div>
 
-          <!-- CONDICIÓN / ESTADO SELECTOR (TITULAR, SUPLENTE, LESIONADO, SANCIONADO) -->
-          <div>
+          <!-- CONDICIÓN / ESTADO SELECTOR (SOLO VISIBLE EN EDICIÓN) -->
+          <div v-if="editingId">
+            <!-- ALERTA INFORMATIVA SI EL JUGADOR ESTÁ SANCIONADO -->
+            <div
+              v-if="editingPlayerSanctionInfo"
+              class="sanction-alert-banner q-pa-md q-mb-md"
+              :style="{ background: editingPlayerSanctionInfo.bgColor, borderColor: editingPlayerSanctionInfo.borderColor }"
+            >
+              <div class="row items-start no-wrap gap-sm">
+                <q-icon
+                  :name="editingPlayerSanctionInfo.icon"
+                  :color="editingPlayerSanctionInfo.color"
+                  size="24px"
+                  class="q-mt-xs flex-shrink-0"
+                />
+                <div>
+                  <div class="text-subtitle2 text-weight-bold" :class="editingPlayerSanctionInfo.isRed ? 'text-negative' : 'text-amber-4'">
+                    {{ editingPlayerSanctionInfo.title }}
+                  </div>
+                  <div class="text-caption text-grey-2 q-mt-xs leading-relaxed">
+                    {{ editingPlayerSanctionInfo.detail }}
+                  </div>
+                  <div class="text-caption text-grey-5 q-mt-xs font-italic">
+                    ⚠️ Sanción automática registrada por incidencias de partidos oficiales. No es editable manualmente.
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div class="text-subtitle2 text-weight-bold q-mb-xs text-white">Condición / Estado en el Plantel</div>
+
+            <!-- BANNER DE INHABILITACIÓN: visible cuando el jugador no puede ser TITULAR/SUPLENTE -->
+            <div
+              v-if="isCurrentPlayerInhabilitated"
+              class="inhabilitation-banner q-pa-sm q-mb-sm row items-start no-wrap gap-sm"
+            >
+              <q-icon name="lock" color="amber-4" size="20px" class="flex-shrink-0 q-mt-xs" />
+              <div>
+                <div class="text-caption text-weight-bold text-amber-3">Jugador Inhabilitado</div>
+                <div class="text-caption text-amber-2 q-mt-xs">{{ inhabilitationReasonText }}</div>
+              </div>
+            </div>
+
             <div class="selector-grid condicion-selector-grid">
               <button
-                v-for="cond in condicionOptions"
+                v-for="cond in editableCondicionOptions"
                 :key="cond.value"
                 type="button"
                 class="selector-card cond-select-card"
-                :class="{ 'selector-card--selected': form.status === cond.value }"
-                @click="form.status = cond.value"
+                :class="{
+                  'selector-card--selected': form.status === cond.value,
+                  'selector-card--disabled': isCurrentPlayerInhabilitated && (cond.value === 'TITULAR' || cond.value === 'SUPLENTE'),
+                }"
+                :disabled="isCurrentPlayerInhabilitated && (cond.value === 'TITULAR' || cond.value === 'SUPLENTE')"
+                @click="handleSelectCondition(cond.value)"
               >
-                <q-icon :name="cond.icon" size="18px" :color="form.status === cond.value ? 'dark' : cond.color" />
+                <q-icon
+                  :name="(isCurrentPlayerInhabilitated && (cond.value === 'TITULAR' || cond.value === 'SUPLENTE')) ? 'lock' : cond.icon"
+                  size="18px"
+                  :color="form.status === cond.value ? 'dark' : (isCurrentPlayerInhabilitated && (cond.value === 'TITULAR' || cond.value === 'SUPLENTE') ? 'grey-6' : cond.color)"
+                />
                 <div class="text-left">
                   <div class="cond-title">{{ cond.label }}</div>
-                  <div class="cond-desc">{{ cond.desc }}</div>
+                  <div class="cond-desc">
+                    <template v-if="isCurrentPlayerInhabilitated && (cond.value === 'TITULAR' || cond.value === 'SUPLENTE')">
+                      No disponible · Jugador inhabilitado
+                    </template>
+                    <template v-else>{{ cond.desc }}</template>
+                  </div>
                 </div>
               </button>
+            </div>
+
+            <!-- DETALLE DE LESIÓN MÉDICA SI ESTÁ LESIONADO -->
+            <div v-if="form.status === 'LESIONADO'" class="injury-summary-box q-pa-md q-mt-sm">
+              <div class="row items-center justify-between">
+                <div class="row items-center gap-sm">
+                  <q-icon name="medical_services" color="warning" size="22px" />
+                  <div>
+                    <div class="text-subtitle2 text-weight-bold text-white">
+                      {{ form.injuryReason || 'Baja Médica Registrada' }}
+                    </div>
+                    <div class="text-caption text-grey-4">
+                      <span v-if="form.injuryDuration">Tiempo estimado: <strong class="text-warning">{{ form.injuryDuration }}</strong> · </span>
+                      <span>Alta médica: <strong class="text-positive">{{ formatDisplayDate(form.recoveryDate) }}</strong></span>
+                    </div>
+                  </div>
+                </div>
+                <q-btn
+                  unelevated
+                  size="sm"
+                  color="warning"
+                  text-color="dark"
+                  icon="edit"
+                  label="Modificar Baja"
+                  @click="openInjuryModal"
+                />
+              </div>
             </div>
           </div>
 
@@ -1314,54 +2056,6 @@ onMounted(async () => {
             </div>
           </div>
 
-          <!-- ESTADÍSTICAS OFICIALES DEL JUGADOR (GOLES, ASISTENCIAS, TARJETAS) -->
-          <div class="stats-form-section">
-            <div class="text-subtitle2 text-weight-bold q-mb-xs text-white">Estadísticas Acumuladas del Jugador</div>
-            <div class="text-caption text-grey-5 q-mb-sm">Modifica o ajusta el registro de goles, asistencias y sanciones disciplinarias.</div>
-            <div class="row q-col-gutter-sm">
-              <div class="col-6 col-sm-3">
-                <q-input
-                  v-model.number="form.goals"
-                  type="number"
-                  min="0"
-                  outlined
-                  dense
-                  label="Goles (GF) ⚽"
-                />
-              </div>
-              <div class="col-6 col-sm-3">
-                <q-input
-                  v-model.number="form.assists"
-                  type="number"
-                  min="0"
-                  outlined
-                  dense
-                  label="Asistencias 👟"
-                />
-              </div>
-              <div class="col-6 col-sm-3">
-                <q-input
-                  v-model.number="form.yellowCards"
-                  type="number"
-                  min="0"
-                  outlined
-                  dense
-                  label="Amarillas 🟨"
-                />
-              </div>
-              <div class="col-6 col-sm-3">
-                <q-input
-                  v-model.number="form.redCards"
-                  type="number"
-                  min="0"
-                  outlined
-                  dense
-                  label="Rojas 🟥"
-                />
-              </div>
-            </div>
-          </div>
-
           <!-- PHOTO URL & PREVIEW -->
           <q-input
             v-model="form.photoUrl"
@@ -1384,6 +2078,124 @@ onMounted(async () => {
             />
           </div>
         </q-form>
+      </q-card>
+    </q-dialog>
+
+    <!-- MODAL DE DETALLE DE LESIÓN / BAJA MÉDICA -->
+    <q-dialog v-model="injuryDialog" persistent>
+      <q-card style="max-width: 540px; width: 94vw;" class="sports-dialog-card">
+        <q-card-section class="dialog-header-section">
+          <div class="row items-center justify-between">
+            <div class="row items-center gap-sm">
+              <div class="header-logo-badge" style="background: rgba(245, 158, 11, 0.2); border-color: rgba(245, 158, 11, 0.4); color: #fbbf24;">
+                <q-icon name="medical_services" size="22px" />
+              </div>
+              <div>
+                <div class="text-h6 text-weight-bold text-white">Detalle de Baja Médica</div>
+                <div class="text-caption text-grey-4">Registro de lesión fuera o dentro de partidos oficiales</div>
+              </div>
+            </div>
+            <q-btn flat round dense icon="close" color="grey-5" @click="injuryDialog = false" />
+          </div>
+        </q-card-section>
+
+        <q-card-section class="q-pa-lg q-gutter-y-md">
+          <!-- MOTIVO O DESCRIPCIÓN -->
+          <div>
+            <div class="text-subtitle2 text-weight-bold text-white q-mb-xs">Motivo o Descripción de la Lesión *</div>
+            <q-input
+              v-model="injuryForm.reason"
+              outlined
+              dense
+              placeholder="ej: Esguince de rodilla en entrenamiento"
+              hint="Detalle la naturaleza de la lesión o molestia física."
+            />
+          </div>
+
+          <!-- FECHA DE INICIO DE LA LESIÓN -->
+          <div>
+            <div class="text-subtitle2 text-weight-bold text-white q-mb-xs">Fecha de Inicio de la Lesión *</div>
+            <q-input
+              v-model="injuryForm.startDate"
+              type="date"
+              outlined
+              dense
+              hint="¿Cuándo ocurrió la lesión?"
+              @update:model-value="calcRecoveryDate"
+            >
+              <template #prepend>
+                <q-icon name="event" color="grey-5" size="18px" />
+              </template>
+            </q-input>
+          </div>
+
+          <!-- TIEMPO ESTIMADO DE BAJA: CANTIDAD + UNIDAD -->
+          <div>
+            <div class="text-subtitle2 text-weight-bold text-white q-mb-xs">Tiempo Estimado de Baja *</div>
+            <div class="row q-col-gutter-sm items-start">
+              <div class="col-5">
+                <q-input
+                  v-model.number="injuryForm.durationAmount"
+                  type="number"
+                  outlined
+                  dense
+                  min="1"
+                  placeholder="ej: 2"
+                  hint="Cantidad"
+                  @update:model-value="calcRecoveryDate"
+                >
+                  <template #prepend>
+                    <q-icon name="schedule" color="grey-5" size="16px" />
+                  </template>
+                </q-input>
+              </div>
+              <div class="col-7">
+                <q-select
+                  v-model="injuryForm.durationUnit"
+                  :options="durationUnitOptions"
+                  outlined
+                  dense
+                  hint="Unidad"
+                  @update:model-value="calcRecoveryDate"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- FECHA DE RETORNO (CALCULADA AUTOMÁTICAMENTE) -->
+          <div>
+            <div class="text-subtitle2 text-weight-bold text-white q-mb-xs row items-center gap-xs">
+              <q-icon name="event_available" color="positive" size="16px" />
+              Fecha Exacta de Retorno Prevista
+              <span class="text-caption text-grey-5 text-lowercase">(calculada automáticamente)</span>
+            </div>
+            <q-input
+              v-model="injuryForm.recoveryDate"
+              type="date"
+              outlined
+              dense
+              hint="Se calcula al ingresar la fecha de inicio y el tiempo de baja."
+            >
+              <template #prepend>
+                <q-icon name="healing" color="positive" size="18px" />
+              </template>
+            </q-input>
+          </div>
+
+          <!-- ACCIONES -->
+          <div class="row justify-end gap-sm q-pt-md">
+            <q-btn flat label="Cancelar" color="grey-5" @click="injuryDialog = false" />
+            <q-btn
+              unelevated
+              color="warning"
+              text-color="dark"
+              label="Guardar Baja Médica"
+              icon="check"
+              class="text-weight-bold"
+              @click="confirmInjuryDetails"
+            />
+          </div>
+        </q-card-section>
       </q-card>
     </q-dialog>
   </div>
@@ -1498,19 +2310,33 @@ onMounted(async () => {
 
 /* Player Avatar and Name */
 .player-avatar-pill {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
+  width: 40px !important;
+  height: 40px !important;
+  min-width: 40px !important;
+  min-height: 40px !important;
+  max-width: 40px !important;
+  max-height: 40px !important;
+  border-radius: 50% !important;
   border: 1px solid var(--tb-border);
   flex-shrink: 0;
+  overflow: hidden !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: rgba(15, 23, 42, 0.6);
 }
 
 .player-avatar-image {
-  display: block;
+  display: block !important;
   width: 100% !important;
   height: 100% !important;
-  border-radius: 50%;
+  min-width: 100% !important;
+  min-height: 100% !important;
+  border-radius: 50% !important;
   object-fit: cover !important;
+  padding: 0 !important;
+  margin: 0 !important;
 }
 
 .player-name-bold {
@@ -1887,6 +2713,221 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.locked-team-card {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: var(--tb-radius-md, 14px);
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+}
+
+.locked-team-crest-wrap {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  border: 2px solid rgba(245, 158, 11, 0.55);
+  box-shadow: 0 0 24px rgba(245, 158, 11, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.9);
+  overflow: hidden;
+  padding: 6px;
+}
+
+.transfer-lock-banner {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 8px;
+  line-height: 1.45;
+}
+
+.sanction-alert-banner {
+  border-radius: var(--tb-radius-md, 10px);
+  border: 1px solid;
+  line-height: 1.45;
+}
+
+.injury-summary-box {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: var(--tb-radius-md, 10px);
+}
+
+.sports-dialog-card {
+  background: #111827;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+}
+
+/* ─── Inhabilitación banner ─── */
+.inhabilitation-banner {
+  background: rgba(245, 158, 11, 0.13);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: 8px;
+  line-height: 1.45;
+}
+
+/* ─── Selector card deshabilitada ─── */
+.selector-card--disabled {
+  opacity: 0.38 !important;
+  cursor: not-allowed !important;
+  pointer-events: none;
+  filter: grayscale(0.7);
+}
+
+/* ─── Jersey Preview ─── */
+.jersey-preview-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.jersey-preview-card {
+  position: relative;
+  width: 200px;
+  height: 230px;
+  border-radius: 18px 18px 12px 12px;
+  border: 2px solid;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding-bottom: 16px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4);
+  transition: box-shadow 0.3s ease;
+}
+
+.jersey-preview-card:hover {
+  box-shadow: 0 12px 40px rgba(0,0,0,0.7), 0 4px 12px rgba(0,0,0,0.5);
+}
+
+.jersey-texture-pattern {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 8px,
+    rgba(255,255,255,0.03) 8px,
+    rgba(255,255,255,0.03) 16px
+  );
+  pointer-events: none;
+}
+
+.jersey-collar {
+  position: absolute;
+  top: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 22px;
+  border: 3px solid;
+  border-top: none;
+  border-radius: 0 0 30px 30px;
+  background: rgba(0,0,0,0.45);
+}
+
+.jersey-club-crest-wrap {
+  position: absolute;
+  top: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.18);
+}
+
+.jersey-club-logo {
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+}
+
+.jersey-name-printed {
+  font-family: 'Arial Black', 'Arial Bold', Arial, sans-serif;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  text-align: center;
+  width: 90%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.jersey-number-printed {
+  font-family: 'Arial Black', 'Arial Bold', Arial, sans-serif;
+  font-size: 52px;
+  font-weight: 900;
+  letter-spacing: -2px;
+  line-height: 1;
+  text-align: center;
+}
+
+.jersey-club-tag {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  opacity: 0.75;
+}
+
+.inline-name-locked-wrap {
+  display: flex;
+  flex-direction: column;
+  min-width: 280px;
+}
+
+.inline-name-locked-input :deep(.q-field__control) {
+  background: rgba(15, 23, 42, 0.75) !important;
+  border-color: rgba(245, 158, 11, 0.35) !important;
+  cursor: not-allowed !important;
+  opacity: 0.9 !important;
+}
+
+.inline-name-locked-input :deep(.q-field__native) {
+  color: #f1f5f9 !important;
+  font-weight: 700 !important;
+  cursor: not-allowed !important;
+}
+
+.inline-name-redirect-hint {
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.inline-redirect-link {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: var(--tb-primary, #10b981);
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.inline-redirect-link:hover {
+  color: #34d399;
 }
 
 @media (max-width: 600px) {

@@ -14,6 +14,58 @@ const playerSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    firstName: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    primerNombre: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    middleName: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    segundoNombre: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    lastName: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    primerApellido: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    secondLastName: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    segundoApellido: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    jerseyName: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: '',
+    },
+    nombreCamiseta: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: '',
+    },
     number: {
       type: Number,
       min: [0, 'El número de camiseta debe ser mayor o igual a 0'],
@@ -57,6 +109,14 @@ const playerSchema = new mongoose.Schema(
     recoveryDate: {
       type: Date,
       default: null,
+    },
+    injuryReason: {
+      type: String,
+      default: '',
+    },
+    injuryDuration: {
+      type: String,
+      default: '',
     },
     condicion: {
       type: String,

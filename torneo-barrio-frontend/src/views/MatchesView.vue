@@ -29,10 +29,51 @@ const form = reactive({
   awayTeam: '',
 })
 
-const teamOptions = computed(() => store.teams.map((team) => ({
-  label: team.name,
-  value: team._id,
-})))
+const teamOptions = computed(() => [...store.teams]
+  .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'es', { sensitivity: 'base' }))
+  .map((team) => ({
+    label: team.name,
+    value: team._id,
+  }))
+)
+
+const filteredHomeTeamOptions = ref([])
+const filteredAwayTeamOptions = ref([])
+
+watch(teamOptions, (val) => {
+  filteredHomeTeamOptions.value = val || []
+  filteredAwayTeamOptions.value = val || []
+}, { immediate: true })
+
+const filterHomeTeam = (val, update) => {
+  if (!val || !val.trim()) {
+    update(() => {
+      filteredHomeTeamOptions.value = teamOptions.value
+    })
+    return
+  }
+  update(() => {
+    const needle = val.toLowerCase().trim()
+    filteredHomeTeamOptions.value = teamOptions.value.filter(
+      (opt) => opt.label.toLowerCase().includes(needle)
+    )
+  })
+}
+
+const filterAwayTeam = (val, update) => {
+  if (!val || !val.trim()) {
+    update(() => {
+      filteredAwayTeamOptions.value = teamOptions.value
+    })
+    return
+  }
+  update(() => {
+    const needle = val.toLowerCase().trim()
+    filteredAwayTeamOptions.value = teamOptions.value.filter(
+      (opt) => opt.label.toLowerCase().includes(needle)
+    )
+  })
+}
 
 const getTeamName = (team) => {
   if (!team) return 'Equipo'
@@ -698,25 +739,35 @@ onMounted(async () => {
             <div class="col-12 col-sm-6">
               <q-select
                 v-model="form.homeTeam"
-                :options="teamOptions"
+                :options="filteredHomeTeamOptions"
                 emit-value
                 map-options
-                label="Equipo Local"
+                use-input
+                fill-input
+                hide-selected
+                input-debounce="0"
+                label="Equipo Local *"
                 outlined
                 stack-label
                 required
+                @filter="filterHomeTeam"
               />
             </div>
             <div class="col-12 col-sm-6">
               <q-select
                 v-model="form.awayTeam"
-                :options="teamOptions"
+                :options="filteredAwayTeamOptions"
                 emit-value
                 map-options
-                label="Equipo Visitante"
+                use-input
+                fill-input
+                hide-selected
+                input-debounce="0"
+                label="Equipo Visitante *"
                 outlined
                 stack-label
                 required
+                @filter="filterAwayTeam"
               />
             </div>
           </div>

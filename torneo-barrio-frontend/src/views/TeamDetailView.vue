@@ -152,16 +152,16 @@ const getCondicionMeta = (val) => {
             <template #body-cell-player="props">
               <q-td :props="props">
                 <div class="row items-center no-wrap gap-md">
-                  <div class="sport-crest-container" style="width: 36px; height: 36px;">
-                    <ImagePreview
-                      :src="props.row.photoUrl || team?.logoUrl || team?.escudo_url"
-                      :fallback="getDefaultTeamLogo(team)"
-                      :alt="`Escudo o fotografía de ${props.row.name || props.row.nombre}`"
-                      width="32px"
-                      height="32px"
+                  <div class="player-avatar-pill">
+                    <img
+                      :src="props.row.photoUrl || '/images/default-avatar.svg'"
+                      :alt="`Fotografía de ${props.row.name || props.row.nombre}`"
+                      class="player-avatar-image"
+                      crossorigin="anonymous"
+                      @error="(e) => { if (!e.target.src.endsWith('/images/default-avatar.svg')) e.target.src = '/images/default-avatar.svg' }"
                     />
                   </div>
-                  <span class="text-weight-bold text-white">{{ props.row.name || props.row.nombre }}</span>
+                  <span class="text-weight-bold text-white q-ml-md">{{ props.row.name || props.row.nombre }}</span>
                 </div>
               </q-td>
             </template>
@@ -339,5 +339,36 @@ const getCondicionMeta = (val) => {
   font-size: 1rem;
   font-weight: 900;
   letter-spacing: 0.06em;
+}
+
+/* Player circular avatar */
+.player-avatar-pill {
+  width: 40px !important;
+  height: 40px !important;
+  min-width: 40px !important;
+  min-height: 40px !important;
+  max-width: 40px !important;
+  max-height: 40px !important;
+  border-radius: 50% !important;
+  border: 1px solid var(--tb-border, rgba(255, 255, 255, 0.12));
+  flex-shrink: 0;
+  overflow: hidden !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.player-avatar-image {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 100% !important;
+  min-height: 100% !important;
+  border-radius: 50% !important;
+  object-fit: cover !important;
+  padding: 0 !important;
+  margin: 0 !important;
 }
 </style>

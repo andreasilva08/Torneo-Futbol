@@ -91,6 +91,21 @@ const getPlayerStatsFromMatches = async () => {
   }
 };
 
+// Validar si la temporada ha finalizado reglamentariamente (38 jornadas completas) o si los fichajes están habilitados
+const isSeasonCompletedOrTransfersAllowed = async () => {
+  if (process.env.ALLOW_PLAYER_TRANSFERS === 'true' || process.env.SEASON_STATUS === 'CLOSED') {
+    return true;
+  }
+  const finishedMatchdays = await Match.distinct('matchday', { status: 'FINISHED' });
+  const pendingMatches = await Match.countDocuments({ status: { $ne: 'FINISHED' } });
+
+  // 38 jornadas finalizadas y sin ningún partido pendiente de jugar
+  if (finishedMatchdays.length >= 38 && pendingMatches === 0) {
+    return true;
+  }
+  return false;
+};
+
 // Función auxiliar para normalizar y estructurar la salida de un jugador
 // Garantiza compatibilidad absoluta con datos nativos de MongoDB Atlas (nombre, dorsal, posicion, equipo, condicion)
 const formatPlayer = (doc, statsAgg = null) => {
@@ -102,8 +117,8 @@ const formatPlayer = (doc, statsAgg = null) => {
     p.dorsal !== undefined && p.dorsal !== null
       ? p.dorsal
       : p.number !== undefined && p.number !== null
-      ? p.number
-      : 0
+        ? p.number
+        : 0
   );
   const position = p.posicion || p.position || 'Delantero';
 
@@ -156,10 +171,67 @@ const formatPlayer = (doc, statsAgg = null) => {
   const yellowCards = Math.max(manualYellow, matchYellow);
   const redCards = Math.max(manualRed, matchRed);
 
+  // ── Helper: convierte una cadena a Title Case (primera letra en mayúscula, resto en minúscula) ──
+  const toTitleCase = (str) => {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+  };
+
+  let firstName = p.firstName || p.primerNombre || '';
+  let middleName = p.middleName || p.segundoNombre || '';
+  let lastName = p.lastName || p.primerApellido || '';
+  let secondLastName = p.secondLastName || p.segundoApellido || '';
+  let jerseyName = p.jerseyName || p.nombreCamiseta || '';
+
+  // ── Fallback para jugadores legacy: el formato original era 'APELLIDO Nombre' ──
+  // Primera palabra = Apellido (lastName), segunda palabra = Nombre (firstName)
+  if (!firstName && !lastName && name) {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) {
+      // Solo una palabra — asumimos que es el apellido
+      lastName = toTitleCase(parts[0]);
+    } else if (parts.length === 2) {
+      // 'APELLIDO Nombre'
+      lastName = toTitleCase(parts[0]);
+      firstName = toTitleCase(parts[1]);
+    } else if (parts.length === 3) {
+      // 'APELLIDO Nombre SegundoApellido' o similar
+      lastName = toTitleCase(parts[0]);
+      firstName = toTitleCase(parts[1]);
+      secondLastName = toTitleCase(parts[2]);
+    } else if (parts.length >= 4) {
+      // 'APELLIDO1 APELLIDO2 Nombre SegundoNombre'
+      lastName = toTitleCase(parts[0]);
+      secondLastName = toTitleCase(parts[1]);
+      firstName = toTitleCase(parts[2]);
+      middleName = toTitleCase(parts.slice(3).join(' '));
+    }
+  } else {
+    // Normalizar Title Case en los campos estructurados si ya existen
+    firstName = toTitleCase(firstName);
+    lastName = toTitleCase(lastName);
+    if (middleName) middleName = toTitleCase(middleName);
+    if (secondLastName) secondLastName = toTitleCase(secondLastName);
+  }
+
+  if (!jerseyName) {
+    jerseyName = (lastName || firstName || name).toUpperCase();
+  }
+
   return {
     ...p,
     name,
     nombre: name,
+    firstName,
+    primerNombre: firstName,
+    middleName,
+    segundoNombre: middleName,
+    lastName,
+    primerApellido: lastName,
+    secondLastName,
+    segundoApellido: secondLastName,
+    jerseyName,
+    nombreCamiseta: jerseyName,
     number,
     dorsal: number,
     position,
@@ -184,7 +256,7 @@ const formatPlayer = (doc, statsAgg = null) => {
 // @route   GET /api/players  (opcional: ?page=1&limit=20)
 const getPlayers = async (req, res) => {
   try {
-    const page  = req.query.page  ? Math.max(1, Number(req.query.page))  : null;
+    const page = req.query.page ? Math.max(1, Number(req.query.page)) : null;
     const limit = req.query.limit ? Math.max(1, Number(req.query.limit)) : null;
 
     const [statsAgg, total, players] = await Promise.all([
@@ -234,6 +306,16 @@ const createPlayer = async (req, res) => {
     const {
       name,
       nombre,
+      firstName,
+      primerNombre,
+      middleName,
+      segundoNombre,
+      lastName,
+      primerApellido,
+      secondLastName,
+      segundoApellido,
+      jerseyName,
+      nombreCamiseta,
       number,
       dorsal,
       position,
@@ -255,14 +337,38 @@ const createPlayer = async (req, res) => {
       tarjetasRojas,
     } = req.body;
 
-    const playerName = name || nombre;
-    if (!playerName) {
-      return res.status(400).json({ message: 'El nombre del jugador es obligatorio' });
+    const fName = String(firstName || primerNombre || '').trim();
+    const mName = String(middleName || segundoNombre || '').trim();
+    const lName = String(lastName || primerApellido || '').trim();
+    const slName = String(secondLastName || segundoApellido || '').trim();
+    let jName = String(jerseyName || nombreCamiseta || '').trim().toUpperCase();
+
+    let playerName = '';
+    if (fName || lName) {
+      if (!fName) {
+        return res.status(400).json({ message: 'El primer nombre del jugador es obligatorio' });
+      }
+      if (!lName) {
+        return res.status(400).json({ message: 'El primer apellido del jugador es obligatorio' });
+      }
+      playerName = [fName, mName, lName, slName].filter(Boolean).join(' ');
+      if (!jName) {
+        jName = (lName || fName).toUpperCase();
+      }
+    } else {
+      playerName = String(name || nombre || '').trim();
+      if (!playerName) {
+        return res.status(400).json({ message: 'El primer nombre y primer apellido del jugador son obligatorios' });
+      }
+      if (!jName) {
+        jName = playerName.toUpperCase();
+      }
     }
 
     const playerNumber = Number(number !== undefined ? number : (dorsal !== undefined ? dorsal : 0));
     const playerPosition = position || posicion || 'Delantero';
-    const playerStatus = (status || condicion || 'TITULAR').toUpperCase();
+    // Estado inicial automático en 'TITULAR'
+    const playerStatus = 'TITULAR';
 
     let teamId = team;
     let equipoName = equipo;
@@ -274,14 +380,25 @@ const createPlayer = async (req, res) => {
       }
     }
 
-    const playerGoals = Number(goals !== undefined ? goals : (goles !== undefined ? goles : 0));
-    const playerAssists = Number(assists !== undefined ? assists : (asistencias !== undefined ? asistencias : 0));
-    const playerYellow = Number(yellowCards !== undefined ? yellowCards : (tarjetasAmarillas !== undefined ? tarjetasAmarillas : 0));
-    const playerRed = Number(redCards !== undefined ? redCards : (tarjetasRojas !== undefined ? tarjetasRojas : 0));
+    // Goles, asistencias y tarjetas se inicializan automáticamente en 0 en la base de datos
+    const playerGoals = 0;
+    const playerAssists = 0;
+    const playerYellow = 0;
+    const playerRed = 0;
 
     const newPlayer = await Player.create({
       name: playerName,
       nombre: playerName,
+      firstName: fName,
+      primerNombre: fName,
+      middleName: mName,
+      segundoNombre: mName,
+      lastName: lName,
+      primerApellido: lName,
+      secondLastName: slName,
+      segundoApellido: slName,
+      jerseyName: jName,
+      nombreCamiseta: jName,
       number: playerNumber,
       dorsal: playerNumber,
       position: playerPosition,
@@ -325,10 +442,50 @@ const updatePlayer = async (req, res) => {
     const firstField = (...fields) => fields.find((field) => Object.prototype.hasOwnProperty.call(input, field));
     const body = {};
 
-    const nameField = firstField('name', 'nombre');
-    if (nameField) {
-      body.name = String(input[nameField] ?? '').trim();
-      body.nombre = body.name;
+    const fNameField = firstField('firstName', 'primerNombre');
+    const mNameField = firstField('middleName', 'segundoNombre');
+    const lNameField = firstField('lastName', 'primerApellido');
+    const slNameField = firstField('secondLastName', 'segundoApellido');
+    const jNameField = firstField('jerseyName', 'nombreCamiseta');
+
+    if (fNameField) {
+      body.firstName = String(input[fNameField] ?? '').trim();
+      body.primerNombre = body.firstName;
+    }
+    if (mNameField) {
+      body.middleName = String(input[mNameField] ?? '').trim();
+      body.segundoNombre = body.middleName;
+    }
+    if (lNameField) {
+      body.lastName = String(input[lNameField] ?? '').trim();
+      body.primerApellido = body.lastName;
+    }
+    if (slNameField) {
+      body.secondLastName = String(input[slNameField] ?? '').trim();
+      body.segundoApellido = body.secondLastName;
+    }
+    if (jNameField) {
+      body.jerseyName = String(input[jNameField] ?? '').trim().toUpperCase();
+      body.nombreCamiseta = body.jerseyName;
+    }
+
+    if (fNameField || lNameField || mNameField || slNameField) {
+      const finalFName = body.firstName !== undefined ? body.firstName : (currentPlayer.firstName || currentPlayer.primerNombre || '');
+      const finalMName = body.middleName !== undefined ? body.middleName : (currentPlayer.middleName || currentPlayer.segundoNombre || '');
+      const finalLName = body.lastName !== undefined ? body.lastName : (currentPlayer.lastName || currentPlayer.primerApellido || '');
+      const finalSLName = body.secondLastName !== undefined ? body.secondLastName : (currentPlayer.secondLastName || currentPlayer.segundoApellido || '');
+      
+      const fullFromParts = [finalFName, finalMName, finalLName, finalSLName].filter(Boolean).join(' ');
+      if (fullFromParts) {
+        body.name = fullFromParts;
+        body.nombre = fullFromParts;
+      }
+    } else {
+      const nameField = firstField('name', 'nombre');
+      if (nameField) {
+        body.name = String(input[nameField] ?? '').trim();
+        body.nombre = body.name;
+      }
     }
 
     const numberField = firstField('number', 'dorsal');
@@ -358,14 +515,62 @@ const updatePlayer = async (req, res) => {
       if (!statuses.includes(requestedStatus)) {
         return res.status(400).json({ message: 'La condición seleccionada no es válida' });
       }
+
+      // Validación estricta: Si el jugador se encuentra actualmente en LESIONADO, SANCIONADO_ROJA o SANCIONADO_AMARILLAS,
+      // no se puede cambiar a TITULAR o SUPLENTE mientras esté inhabilitado.
+      const currentStatus = String(currentPlayer.status || currentPlayer.condicion || '').toUpperCase();
+      const isInhabilitated = currentStatus === 'LESIONADO' || currentStatus.startsWith('SANCIONADO');
+      if (isInhabilitated && (requestedStatus === 'TITULAR' || requestedStatus === 'SUPLENTE')) {
+        let motivo = 'sanción o baja médica';
+        if (currentStatus === 'LESIONADO') motivo = 'lesión médica';
+        else if (currentStatus === 'SANCIONADO_ROJA') motivo = 'sanción por tarjeta roja directa';
+        else if (currentStatus === 'SANCIONADO_AMARILLAS') motivo = 'sanción por acumulación de tarjetas amarillas';
+        
+        return res.status(400).json({
+          message: `El jugador se encuentra inhabilitado por ${motivo}. No puede ser asignado como Titular o Suplente hasta que finalice su período de inhabilitación.`
+        });
+      }
+
       body.status = requestedStatus;
       body.condicion = requestedStatus;
+    }
+
+    // Actualización de datos de lesión médica (fuera o dentro de partidos)
+    if (Object.prototype.hasOwnProperty.call(input, 'injuryReason')) {
+      body.injuryReason = String(input.injuryReason ?? '').trim();
+    }
+    if (Object.prototype.hasOwnProperty.call(input, 'injuryDuration')) {
+      body.injuryDuration = String(input.injuryDuration ?? '').trim();
+    }
+    if (Object.prototype.hasOwnProperty.call(input, 'recoveryDate')) {
+      body.recoveryDate = input.recoveryDate ? new Date(input.recoveryDate) : null;
     }
 
     const teamField = firstField('team', 'teamId');
     let targetTeamId = currentPlayer.team;
     if (teamField) {
       const requestedTeamId = input[teamField];
+      const currentTeamIdStr = currentPlayer.team
+        ? String(currentPlayer.team._id || currentPlayer.team).trim()
+        : null;
+      const requestedTeamIdStr = requestedTeamId
+        ? (typeof requestedTeamId === 'object' ? String(requestedTeamId._id || requestedTeamId.id || '') : String(requestedTeamId)).trim()
+        : null;
+
+      // Validar si se está alterando el equipo del jugador
+      const isTeamAltered = currentTeamIdStr !== null
+        ? (requestedTeamIdStr !== currentTeamIdStr)
+        : Boolean(requestedTeamIdStr);
+
+      if (isTeamAltered) {
+        const canTransfer = await isSeasonCompletedOrTransfersAllowed();
+        if (!canTransfer) {
+          return res.status(400).json({
+            message: 'El jugador pertenece a este equipo. Para realizar transferencias o cambios de equipo, se debe finalizar la temporada actual (completar los 38 partidos reglamentarios).'
+          });
+        }
+      }
+
       if (requestedTeamId === null || requestedTeamId === '') {
         targetTeamId = null;
         body.team = null;
@@ -401,21 +606,8 @@ const updatePlayer = async (req, res) => {
       body.photoUrl = photoUrl;
     }
 
-    const numericFields = [
-      { aliases: ['goals', 'goles'], fields: ['goals', 'goles'] },
-      { aliases: ['assists', 'asistencias'], fields: ['assists', 'asistencias'] },
-      { aliases: ['yellowCards', 'tarjetasAmarillas'], fields: ['yellowCards', 'tarjetasAmarillas'] },
-      { aliases: ['redCards', 'tarjetasRojas'], fields: ['redCards', 'tarjetasRojas'] },
-    ];
-    for (const definition of numericFields) {
-      const field = firstField(...definition.aliases);
-      if (!field) continue;
-      const value = Number(input[field]);
-      if (!Number.isFinite(value) || value < 0) {
-        return res.status(400).json({ message: `El valor de ${field} debe ser un número mayor o igual a 0` });
-      }
-      for (const targetField of definition.fields) body[targetField] = value;
-    }
+    // Nota: Las estadísticas (goles, asistencias, tarjetas) son acumulativas y dependen
+    // exclusivamente de los eventos de partidos (matchEvents). No son editables de forma manual.
 
     const finalNumber = body.number ?? currentPlayer.number ?? currentPlayer.dorsal;
     const shouldCheckNumber = Boolean(numberField || teamField);
