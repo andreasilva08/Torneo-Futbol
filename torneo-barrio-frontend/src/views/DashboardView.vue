@@ -1,164 +1,193 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useQuasar } from 'quasar'
-import { RouterLink } from 'vue-router'
-import { useTournamentStore } from '@/stores/tournament'
-import ImagePreview from '@/components/ImagePreview.vue'
-import MatchSummaryCard from '@/components/MatchSummaryCard.vue'
-import { getDefaultTeamLogo } from '@/utils/defaultAssets'
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { useQuasar } from "quasar";
+import { RouterLink } from "vue-router";
+import { useTournamentStore } from "@/stores/tournament";
+import ImagePreview from "@/components/ImagePreview.vue";
+import MatchSummaryCard from "@/components/MatchSummaryCard.vue";
+import { getDefaultTeamLogo } from "@/utils/defaultAssets";
 import {
   eventTypeLabel,
   formatMatchDate,
   getId,
   normalizeMatchStatus,
-} from '@/utils/matchFormatting'
+} from "@/utils/matchFormatting";
 
-const store = useTournamentStore()
-const $q = useQuasar()
-const matchPollInterval = 30000
-let pollTimer
-let lastMatchError = ''
+const store = useTournamentStore();
+const $q = useQuasar();
+const matchPollInterval = 30000;
+let pollTimer;
+let lastMatchError = "";
 
-const matchTab = ref('upcoming') // 'upcoming' | 'recent'
+const matchTab = ref("upcoming"); // 'upcoming' | 'recent'
 
 const playedMatchdaysCount = computed(() => {
   const matchdays = store.matches
-    .filter((m) => normalizeMatchStatus(m.status) === 'FINISHED')
+    .filter((m) => normalizeMatchStatus(m.status) === "FINISHED")
     .map((m) => Number(m.matchday))
-    .filter((md) => md > 0)
-  return new Set(matchdays).size
-})
+    .filter((md) => md > 0);
+  return new Set(matchdays).size;
+});
 
 const kpiMetrics = computed(() => [
   {
-    label: 'Equipos Registrados',
+    label: "Equipos Registrados",
     value: store.totalTeams,
-    subtext: 'En competencia oficial',
-    icon: 'groups',
-    color: '#10b981',
-    bgColor: 'rgba(16, 185, 129, 0.15)',
+    subtext: "En competencia oficial",
+    icon: "groups",
+    color: "#10b981",
+    bgColor: "rgba(16, 185, 129, 0.15)",
   },
   {
-    label: 'Partidos Totales',
+    label: "Partidos Totales",
     value: store.totalMatches,
     subtext: `${store.finishedMatches.length} finalizados · ${store.scheduledMatches.length} pendientes`,
-    icon: 'event',
-    color: '#3b82f6',
-    bgColor: 'rgba(59, 130, 246, 0.15)',
+    icon: "event",
+    color: "#3b82f6",
+    bgColor: "rgba(59, 130, 246, 0.15)",
   },
   {
-    label: 'Goles Anotados',
+    label: "Goles Anotados",
     value: store.totalGoals,
-    subtext: 'Goles del torneo',
-    icon: 'sports_soccer',
-    color: '#eab308',
-    bgColor: 'rgba(234, 179, 8, 0.15)',
+    subtext: "Goles del torneo",
+    icon: "sports_soccer",
+    color: "#eab308",
+    bgColor: "rgba(234, 179, 8, 0.15)",
   },
   {
-    label: 'Jornadas Disputadas',
+    label: "Jornadas Disputadas",
     value: `${playedMatchdaysCount.value} / 38`,
-    subtext: 'Avance del torneo',
-    icon: 'calendar_month',
-    color: '#06b6d4',
-    bgColor: 'rgba(6, 182, 212, 0.15)',
+    subtext: "Avance del torneo",
+    icon: "calendar_month",
+    color: "#06b6d4",
+    bgColor: "rgba(6, 182, 212, 0.15)",
   },
-])
+]);
 
-const liveMatches = computed(() => store.liveMatches)
+const liveMatches = computed(() => store.liveMatches);
 
-const upcomingMatches = computed(() => store.matches
-  .filter((match) => normalizeMatchStatus(match.status) === 'SCHEDULED')
-  .sort((first, second) => {
-    const matchdayDifference = (Number(first.matchday || 0) || 0) - (Number(second.matchday || 0) || 0)
-    if (matchdayDifference !== 0) return matchdayDifference
-    return new Date(first.date) - new Date(second.date)
-  })
-  .slice(0, 4))
+const upcomingMatches = computed(() =>
+  store.matches
+    .filter((match) => normalizeMatchStatus(match.status) === "SCHEDULED")
+    .sort((first, second) => {
+      const matchdayDifference =
+        (Number(first.matchday || 0) || 0) -
+        (Number(second.matchday || 0) || 0);
+      if (matchdayDifference !== 0) return matchdayDifference;
+      return new Date(first.date) - new Date(second.date);
+    })
+    .slice(0, 4),
+);
 
-const recentResults = computed(() => [...store.finishedMatches]
-  .sort((first, second) => {
-    const matchdayDifference = (Number(second.matchday || 0) || 0) - (Number(first.matchday || 0) || 0)
-    if (matchdayDifference !== 0) return matchdayDifference
-    return new Date(second.date) - new Date(first.date)
-  })
-  .slice(0, 4))
+const recentResults = computed(() =>
+  [...store.finishedMatches]
+    .sort((first, second) => {
+      const matchdayDifference =
+        (Number(second.matchday || 0) || 0) -
+        (Number(first.matchday || 0) || 0);
+      if (matchdayDifference !== 0) return matchdayDifference;
+      return new Date(second.date) - new Date(first.date);
+    })
+    .slice(0, 4),
+);
 
 const topLeaders = computed(() => {
   if (store.standings.length) {
-    return store.standings.slice(0, 5)
+    return store.standings.slice(0, 5);
   }
   return store.teams.slice(0, 5).map((t, idx) => ({
     position: idx + 1,
-    name: t.name || t.nombre || 'Equipo',
-    logoUrl: t.logoUrl || t.escudo_url || '',
+    name: t.name || t.nombre || "Equipo",
+    logoUrl: t.logoUrl || t.escudo_url || "",
     points: 0,
     goalDifference: 0,
     played: 0,
-  }))
-})
+  }));
+});
 
 const topScorersList = computed(() => {
-  return store.scorers.slice(0, 5)
-})
+  return store.scorers.slice(0, 5);
+});
 
-const scorerPhoto = (scorer) => scorer?.playerPhotoUrl || scorer?.photoUrl || scorer?.foto_url || scorer?.photo || scorer?.image ||
-  scorer?.player?.photoUrl || scorer?.player?.foto_url || scorer?.player?.photo || scorer?.player?.image || '/images/default-avatar.svg'
+const scorerPhoto = (scorer) =>
+  scorer?.playerPhotoUrl ||
+  scorer?.photoUrl ||
+  scorer?.foto_url ||
+  scorer?.photo ||
+  scorer?.image ||
+  scorer?.player?.photoUrl ||
+  scorer?.player?.foto_url ||
+  scorer?.player?.photo ||
+  scorer?.player?.image ||
+  "/images/default-avatar.svg";
 
 const playerLabel = (playerId, fallbackName) => {
-  if (fallbackName) return fallbackName
-  const player = store.players.find((item) => item._id === getId(playerId))
-  return player?.name || player?.nombre || 'Jugador'
-}
+  if (fallbackName) return fallbackName;
+  const player = store.players.find((item) => item._id === getId(playerId));
+  return player?.name || player?.nombre || "Jugador";
+};
 
 const teamLabel = (teamId) => {
-  const team = store.teams.find((item) => item._id === getId(teamId))
-  return team?.name || team?.nombre || 'Equipo'
-}
+  const team = store.teams.find((item) => item._id === getId(teamId));
+  return team?.name || team?.nombre || "Equipo";
+};
 
-const recentEvents = computed(() => store.matches.flatMap((match) => {
-  const events = [
-    ...(match.goals || []).map((goal) => ({ ...goal, type: 'GOAL' })),
-    ...(match.events || []),
-  ]
+const recentEvents = computed(() =>
+  store.matches
+    .flatMap((match) => {
+      const events = [
+        ...(match.goals || []).map((goal) => ({ ...goal, type: "GOAL" })),
+        ...(match.events || []),
+      ];
 
-  return events.map((event) => ({
-    ...event,
-    typeLabel: eventTypeLabel(event.type),
-    playerLabel: playerLabel(event.player, event.scorer),
-    teamLabel: teamLabel(event.team),
-    match,
-  }))
-}).sort((first, second) => {
-  const updatedTime = new Date(second.match.updatedAt || second.match.date).getTime()
-    - new Date(first.match.updatedAt || first.match.date).getTime()
-  return updatedTime || Number(second.minute) - Number(first.minute)
-}).slice(0, 6))
+      return events.map((event) => ({
+        ...event,
+        typeLabel: eventTypeLabel(event.type),
+        playerLabel: playerLabel(event.player, event.scorer),
+        teamLabel: teamLabel(event.team),
+        match,
+      }));
+    })
+    .sort((first, second) => {
+      const updatedTime =
+        new Date(second.match.updatedAt || second.match.date).getTime() -
+        new Date(first.match.updatedAt || first.match.date).getTime();
+      return updatedTime || Number(second.minute) - Number(first.minute);
+    })
+    .slice(0, 6),
+);
 
-watch(() => store.matchesError, (error) => {
-  if (!error) {
-    lastMatchError = ''
-  } else if (error !== lastMatchError) {
-    lastMatchError = error
-    $q.notify({ type: 'negative', message: `No se pudieron actualizar los partidos: ${error}` })
-  }
-})
+watch(
+  () => store.matchesError,
+  (error) => {
+    if (!error) {
+      lastMatchError = "";
+    } else if (error !== lastMatchError) {
+      lastMatchError = error;
+      $q.notify({
+        type: "negative",
+        message: `No se pudieron actualizar los partidos: ${error}`,
+      });
+    }
+  },
+);
 
 onMounted(async () => {
   pollTimer = window.setInterval(() => {
-    store.fetchMatches()
-  }, matchPollInterval)
+    store.fetchMatches();
+  }, matchPollInterval);
   await Promise.all([
     store.fetchDashboard(),
     store.fetchStandings(),
     store.fetchTopScorers(),
-  ])
-})
+  ]);
+});
 
 onUnmounted(() => {
   if (pollTimer) {
-    window.clearInterval(pollTimer)
+    window.clearInterval(pollTimer);
   }
-})
+});
 </script>
 
 <template>
@@ -170,7 +199,9 @@ onUnmounted(() => {
           <q-icon name="dashboard" />
         </div>
         <div>
-          <div class="sport-page-header__eyebrow">TEMPORADA 2026 · PANEL PRINCIPAL</div>
+          <div class="sport-page-header__eyebrow">
+            TEMPORADA 2026 · PANEL PRINCIPAL
+          </div>
           <h1 class="sport-page-header__title">Dashboard del Torneo</h1>
         </div>
       </div>
@@ -199,12 +230,20 @@ onUnmounted(() => {
       No se pudo cargar el resumen del torneo: {{ store.error }}
     </q-banner>
 
-    <q-banner v-if="store.matchesError" rounded class="bg-warning text-dark q-mb-md">
-      La información de partidos puede estar desactualizada. Se reintentará automáticamente.
+    <q-banner
+      v-if="store.matchesError"
+      rounded
+      class="bg-warning text-dark q-mb-md"
+    >
+      La información de partidos puede estar desactualizada. Se reintentará
+      automáticamente.
     </q-banner>
 
     <!-- TOP KPIS GRID -->
-    <div v-if="store.dashboardLoading && !store.teams.length" class="row q-col-gutter-md q-mb-lg">
+    <div
+      v-if="store.dashboardLoading && !store.teams.length"
+      class="row q-col-gutter-md q-mb-lg"
+    >
       <div v-for="n in 4" :key="n" class="col-12 col-sm-6 col-lg-3">
         <q-card flat class="sport-kpi-card">
           <q-skeleton type="rect" height="110px" />
@@ -213,16 +252,23 @@ onUnmounted(() => {
     </div>
 
     <div v-else class="row q-col-gutter-md q-mb-xl">
-      <div v-for="kpi in kpiMetrics" :key="kpi.label" class="col-12 col-sm-6 col-lg-3">
+      <div
+        v-for="kpi in kpiMetrics"
+        :key="kpi.label"
+        class="col-12 col-sm-6 col-lg-3"
+      >
         <div class="sport-kpi-card">
           <div class="sport-kpi-card__top">
             <span class="sport-kpi-card__label">{{ kpi.label }}</span>
-            <div class="sport-kpi-card__icon-wrap" :style="{ backgroundColor: kpi.bgColor, color: kpi.color }">
+            <div
+              class="sport-kpi-card__icon-wrap"
+              :style="{ backgroundColor: kpi.bgColor, color: kpi.color }"
+            >
               <q-icon :name="kpi.icon" size="22px" />
             </div>
           </div>
           <div class="sport-kpi-card__value">
-            {{ store.error ? '—' : kpi.value }}
+            {{ store.error ? "—" : kpi.value }}
           </div>
           <div class="sport-kpi-card__subtext">
             {{ kpi.subtext }}
@@ -240,14 +286,23 @@ onUnmounted(() => {
           <div class="section-title-bar q-mb-md">
             <div class="row items-center gap-sm">
               <span class="live-dot-pulse"></span>
-              <h2 class="section-heading text-negative">PARTIDOS EN VIVO AHORA</h2>
+              <h2 class="section-heading text-negative">
+                PARTIDOS EN VIVO AHORA
+              </h2>
             </div>
-            <span class="badge-live-count">{{ liveMatches.length }} EN JUEGO</span>
+            <span class="badge-live-count"
+              >{{ liveMatches.length }} EN JUEGO</span
+            >
           </div>
 
           <div class="row q-col-gutter-md">
             <div v-for="match in liveMatches" :key="match._id" class="col-12">
-              <MatchSummaryCard :match="match" />
+              <MatchSummaryCard
+                :match="match"
+                :show-actions="false"
+                class="q-mb-md shadow-2"
+                style="border-top: 3px solid #10b981; border-radius: 12px !important;"
+              />
             </div>
           </div>
         </div>
@@ -283,33 +338,57 @@ onUnmounted(() => {
           <!-- UPCOMING TAB -->
           <div v-if="matchTab === 'upcoming'">
             <div v-if="upcomingMatches.length" class="row q-col-gutter-md">
-              <div v-for="match in upcomingMatches" :key="match._id" class="col-12 col-md-6">
+              <div
+                v-for="match in upcomingMatches"
+                :key="match._id"
+                class="col-12 col-md-6"
+              >
                 <MatchSummaryCard :match="match" />
               </div>
             </div>
             <div v-else class="empty-state-card text-center q-pa-xl">
               <q-icon name="event_available" size="42px" color="grey-6" />
-              <div class="text-subtitle1 text-weight-bold q-mt-sm">No hay partidos programados pendientes</div>
-              <div class="text-caption text-grey-5 q-mt-xs">Todos los partidos registrados ya han finalizado o no hay fechas futuras.</div>
+              <div class="text-subtitle1 text-weight-bold q-mt-sm">
+                No hay partidos programados pendientes
+              </div>
+              <div class="text-caption text-grey-5 q-mt-xs">
+                Todos los partidos registrados ya han finalizado o no hay fechas
+                futuras.
+              </div>
             </div>
           </div>
 
           <!-- RECENT RESULTS TAB -->
           <div v-if="matchTab === 'recent'">
             <div v-if="recentResults.length" class="row q-col-gutter-md">
-              <div v-for="match in recentResults" :key="match._id" class="col-12 col-md-6">
+              <div
+                v-for="match in recentResults"
+                :key="match._id"
+                class="col-12 col-md-6"
+              >
                 <MatchSummaryCard :match="match" />
               </div>
             </div>
             <div v-else class="empty-state-card text-center q-pa-xl">
               <q-icon name="sports" size="42px" color="grey-6" />
-              <div class="text-subtitle1 text-weight-bold q-mt-sm">Aún no hay resultados de partidos finalizados</div>
-              <div class="text-caption text-grey-5 q-mt-xs">Los resultados aparecerán aquí tan pronto terminen los encuentros.</div>
+              <div class="text-subtitle1 text-weight-bold q-mt-sm">
+                Aún no hay resultados de partidos finalizados
+              </div>
+              <div class="text-caption text-grey-5 q-mt-xs">
+                Los resultados aparecerán aquí tan pronto terminen los
+                encuentros.
+              </div>
             </div>
           </div>
 
           <div class="row justify-end q-mt-md">
-            <q-btn flat color="primary" to="/partidos" label="Ver todos los partidos y fixture completo" icon-right="arrow_forward" />
+            <q-btn
+              flat
+              color="primary"
+              to="/partidos"
+              label="Ver todos los partidos y fixture completo"
+              icon-right="arrow_forward"
+            />
           </div>
         </div>
 
@@ -328,29 +407,58 @@ onUnmounted(() => {
                 <RouterLink
                   v-for="(event, index) in recentEvents"
                   :key="`${event.match._id}-${event.type}-${event.minute}-${index}`"
-                  :to="{ name: 'match-detail', params: { id: event.match._id } }"
+                  :to="{
+                    name: 'match-detail',
+                    params: { id: event.match._id },
+                  }"
                   class="activity-item"
                 >
                   <div
                     class="activity-icon-pill"
                     :class="{
                       'activity-icon-pill--goal': event.type === 'GOAL',
-                      'activity-icon-pill--yellow': event.type === 'YELLOW_CARD',
+                      'activity-icon-pill--yellow':
+                        event.type === 'YELLOW_CARD',
                       'activity-icon-pill--red': event.type === 'RED_CARD',
                       'activity-icon-pill--assist': event.type === 'ASSIST',
                     }"
                   >
-                    <span>{{ event.type === 'GOAL' ? '⚽' : event.type === 'RED_CARD' ? '🟥' : event.type === 'YELLOW_CARD' ? '🟨' : '👟' }}</span>
+                    <span>{{
+                      event.type === "GOAL"
+                        ? "⚽"
+                        : event.type === "RED_CARD"
+                          ? "🟥"
+                          : event.type === "YELLOW_CARD"
+                            ? "🟨"
+                            : "👟"
+                    }}</span>
                   </div>
 
                   <div class="col min-width-0">
                     <div class="activity-headline">
-                      <span class="activity-player">{{ event.playerLabel }}</span>
-                      <span class="activity-type-label">{{ event.typeLabel }}</span>
-                      <span class="activity-minute">minuto {{ event.minute }}'</span>
+                      <span class="activity-player">{{
+                        event.playerLabel
+                      }}</span>
+                      <span class="activity-type-label">{{
+                        event.typeLabel
+                      }}</span>
+                      <span class="activity-minute"
+                        >minuto {{ event.minute }}'</span
+                      >
                     </div>
                     <div class="activity-sub">
-                      {{ event.teamLabel }} · {{ event.match.homeTeam?.name || event.match.homeTeam?.nombre || 'Local' }} vs {{ event.match.awayTeam?.name || event.match.awayTeam?.nombre || 'Visitante' }}
+                      {{ event.teamLabel }} ·
+                      {{
+                        event.match.homeTeam?.name ||
+                        event.match.homeTeam?.nombre ||
+                        "Local"
+                      }}
+                      vs
+                      {{
+                        event.match.awayTeam?.name ||
+                        event.match.awayTeam?.nombre ||
+                        "Visitante"
+                      }}
                     </div>
                   </div>
 
@@ -375,7 +483,11 @@ onUnmounted(() => {
               <q-icon name="emoji_events" color="accent" size="20px" />
               <h2 class="section-heading">LÍDERES DEL TORNEO</h2>
             </div>
-            <RouterLink to="/tabla" class="text-caption text-primary text-weight-bold" style="text-decoration: none;">
+            <RouterLink
+              to="/tabla"
+              class="text-caption text-primary text-weight-bold"
+              style="text-decoration: none"
+            >
               Ver tabla
             </RouterLink>
           </div>
@@ -416,8 +528,15 @@ onUnmounted(() => {
                 </div>
 
                 <!-- DG -->
-                <div class="leader-dg" :class="{ 'text-positive': team.goalDifference > 0, 'text-negative': team.goalDifference < 0 }">
-                  {{ team.goalDifference > 0 ? '+' : '' }}{{ team.goalDifference }}
+                <div
+                  class="leader-dg"
+                  :class="{
+                    'text-positive': team.goalDifference > 0,
+                    'text-negative': team.goalDifference < 0,
+                  }"
+                >
+                  {{ team.goalDifference > 0 ? "+" : ""
+                  }}{{ team.goalDifference }}
                 </div>
 
                 <!-- Pts -->
@@ -436,7 +555,11 @@ onUnmounted(() => {
               <q-icon name="sports_soccer" color="primary" size="20px" />
               <h2 class="section-heading">MÁXIMOS GOLEADORES</h2>
             </div>
-            <RouterLink to="/goleadores" class="text-caption text-primary text-weight-bold" style="text-decoration: none;">
+            <RouterLink
+              to="/goleadores"
+              class="text-caption text-primary text-weight-bold"
+              style="text-decoration: none"
+            >
               Ver todos
             </RouterLink>
           </div>
@@ -492,8 +615,14 @@ onUnmounted(() => {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .section-title-bar {
@@ -518,7 +647,7 @@ onUnmounted(() => {
   color: #ef4444;
   font-weight: 800;
   padding: 3px 8px;
-   font-size: 0.8rem;
+  font-size: 0.8rem;
   border-radius: 9999px;
   letter-spacing: 0.04em;
 }

@@ -18,6 +18,30 @@ const props = defineProps({
     type: Object,
     required: true,
   },
+  compact: {
+    type: Boolean,
+    default: false,
+  },
+  showActions: {
+    type: Boolean,
+    default: true,
+  },
+  showEvents: {
+    type: Boolean,
+    default: true,
+  },
+  useShortNames: {
+    type: Boolean,
+    default: false,
+  },
+  crestSize: {
+    type: String,
+    default: '48px',
+  },
+  highlightTeamId: {
+    type: String,
+    default: '',
+  },
 })
 
 const store = useTournamentStore()
@@ -282,11 +306,11 @@ const matchGoals = computed(() => {
         </div>
 
         <!-- FOOTER: Acciones de estado (Iniciar / Finalizar) -->
-        <div
-          v-if="isScheduled || isLive"
-          class="sports-match-card__footer"
-          @click.stop.prevent
-        >
+<div
+  v-if="showActions && (isScheduled || isLive)"
+  class="sports-match-card__footer"
+  @click.stop.prevent
+>
           <button
             v-if="isScheduled"
             type="button"
