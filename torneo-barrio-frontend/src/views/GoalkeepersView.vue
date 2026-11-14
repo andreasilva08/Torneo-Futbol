@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useTournamentStore } from '@/stores/tournament'
 import ImagePreview from '@/components/ImagePreview.vue'
+import PlayerStatsTable from '@/components/PlayerStatsTable.vue'
 import { getDefaultTeamLogo } from '@/utils/defaultAssets'
 import { downloadElementAsPng } from '@/utils/downloadElementAsPng'
 import { exportTournamentExcel } from '@/utils/exportTournamentExcel'
@@ -107,7 +108,7 @@ onMounted(async () => {
           <div class="text-caption text-grey-5">Menor promedio de goles recibidos</div>
         </div>
 
-        <q-table
+        <PlayerStatsTable
           :rows="store.goalkeepers"
           :columns="[
             { name: 'position', label: 'POS', field: 'position', align: 'center' },
@@ -118,9 +119,7 @@ onMounted(async () => {
             { name: 'cleanSheets', label: 'VALLAS A CERO', field: 'cleanSheets', align: 'center' },
           ]"
           row-key="teamId"
-          flat
-          hide-pagination
-          class="stats-sports-table"
+          empty-message="No hay suficientes partidos finalizados para calcular la clasificación de porteros."
         >
           <!-- POSITION -->
           <template #body-cell-position="props">
@@ -200,11 +199,7 @@ onMounted(async () => {
               </span>
             </q-td>
           </template>
-        </q-table>
-
-        <div v-if="!store.goalkeepers.length" class="text-grey-5 text-center q-pa-xl">
-          No hay suficientes partidos finalizados para calcular la clasificación de porteros.
-        </div>
+        </PlayerStatsTable>
       </q-card-section>
     </q-card>
     </div>

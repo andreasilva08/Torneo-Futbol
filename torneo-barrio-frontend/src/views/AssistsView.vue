@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useTournamentStore } from '@/stores/tournament'
 import ImagePreview from '@/components/ImagePreview.vue'
+import PlayerStatsTable from '@/components/PlayerStatsTable.vue'
 import { getDefaultTeamLogo } from '@/utils/defaultAssets'
 import { downloadElementAsPng } from '@/utils/downloadElementAsPng'
 import { exportTournamentExcel } from '@/utils/exportTournamentExcel'
@@ -107,7 +108,7 @@ onMounted(async () => {
           <div class="text-caption text-grey-5">Torneo Oficial 2026</div>
         </div>
 
-        <q-table
+        <PlayerStatsTable
           :rows="store.assists"
           :columns="[
             { name: 'position', label: 'POS', field: 'position', align: 'center' },
@@ -116,9 +117,7 @@ onMounted(async () => {
             { name: 'assists', label: 'ASISTENCIAS', field: 'assists', align: 'center' },
           ]"
           row-key="playerId"
-          flat
-          hide-pagination
-          class="stats-sports-table"
+          empty-message="Todavía no hay asistencias registradas en los partidos disputados."
         >
           <!-- POSITION -->
           <template #body-cell-position="props">
@@ -180,11 +179,7 @@ onMounted(async () => {
               </span>
             </q-td>
           </template>
-        </q-table>
-
-        <div v-if="!store.assists.length" class="text-grey-5 text-center q-pa-xl">
-          Todavía no hay asistencias registradas en los partidos disputados.
-        </div>
+        </PlayerStatsTable>
       </q-card-section>
     </q-card>
     </div>

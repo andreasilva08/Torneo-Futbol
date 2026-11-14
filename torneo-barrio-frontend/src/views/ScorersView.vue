@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useTournamentStore } from '@/stores/tournament'
 import ImagePreview from '@/components/ImagePreview.vue'
+import PlayerStatsTable from '@/components/PlayerStatsTable.vue'
 import { getDefaultTeamLogo } from '@/utils/defaultAssets'
 import { downloadElementAsPng } from '@/utils/downloadElementAsPng'
 import { exportTournamentExcel } from '@/utils/exportTournamentExcel'
@@ -156,94 +157,87 @@ onMounted(async () => {
 
     <!-- FULL SCORERS TABLE -->
     <div ref="exportRef" class="stats-export-surface">
-    <q-card flat class="sports-panel-card">
-      <q-card-section class="q-pa-lg">
-        <div class="row items-center justify-between q-mb-md">
-          <div class="text-subtitle1 text-weight-bold text-white">Tabla General de Goleadores</div>
-          <div class="text-caption text-grey-5">Torneo Oficial 2026</div>
-        </div>
+      <q-card flat class="sports-panel-card">
+        <q-card-section class="q-pa-lg">
+          <div class="row items-center justify-between q-mb-md">
+            <div class="text-subtitle1 text-weight-bold text-white">Tabla General de Goleadores</div>
+            <div class="text-caption text-grey-5">Torneo Oficial 2026</div>
+          </div>
 
-        <q-table
-          :rows="store.scorers"
-          :columns="[
-            { name: 'position', label: 'POS', field: 'position', align: 'center' },
-            { name: 'player', label: 'JUGADOR', field: 'player', align: 'left' },
-            { name: 'team', label: 'EQUIPO', field: 'team', align: 'left' },
-            { name: 'goals', label: 'GOLES ANOTADOS', field: 'goals', align: 'center' },
-          ]"
-          row-key="playerId"
-          flat
-          hide-pagination
-          :pagination="{ rowsPerPage: 0 }"
-          class="scorers-sports-table"
-        >
-          <!-- POSITION -->
-          <template #body-cell-position="props">
-            <q-td :props="props" class="text-center">
-              <span
-                class="rank-circle"
-                :class="{
-                  'rank-circle--gold': props.row.position === 1,
-                  'rank-circle--silver': props.row.position === 2,
-                  'rank-circle--bronze': props.row.position === 3,
-                }"
-              >
-                {{ props.row.position }}
-              </span>
-            </q-td>
-          </template>
+          <PlayerStatsTable
+            :rows="store.scorers"
+            :columns="[
+              { name: 'position', label: 'POS', field: 'position', align: 'center' },
+              { name: 'player', label: 'JUGADOR', field: 'player', align: 'left' },
+              { name: 'team', label: 'EQUIPO', field: 'team', align: 'left' },
+              { name: 'goals', label: 'GOLES ANOTADOS', field: 'goals', align: 'center' },
+            ]"
+            row-key="playerId"
+            empty-message="Todavía no hay goles registrados para el ranking oficial."
+          >
+            <!-- POSITION -->
+            <template #body-cell-position="props">
+              <q-td :props="props" class="text-center">
+                <span
+                  class="rank-circle"
+                  :class="{
+                    'rank-circle--gold': props.row.position === 1,
+                    'rank-circle--silver': props.row.position === 2,
+                    'rank-circle--bronze': props.row.position === 3,
+                  }"
+                >
+                  {{ props.row.position }}
+                </span>
+              </q-td>
+            </template>
 
-          <!-- PLAYER -->
-          <template #body-cell-player="props">
-            <q-td :props="props">
-              <div class="stats-person-cell">
-                <div class="sport-crest-container stats-person-avatar">
-                  <ImagePreview
-                    :src="scorerPhoto(props.row)"
-                    fallback="/images/default-avatar.svg"
-                    :alt="`Foto de ${props.row.player}`"
-                    width="40px"
-                    height="40px"
-                  />
+            <!-- PLAYER -->
+            <template #body-cell-player="props">
+              <q-td :props="props">
+                <div class="stats-person-cell">
+                  <div class="sport-crest-container stats-person-avatar">
+                    <ImagePreview
+                      :src="scorerPhoto(props.row)"
+                      fallback="/images/default-avatar.svg"
+                      :alt="`Foto de ${props.row.player}`"
+                      width="40px"
+                      height="40px"
+                    />
+                  </div>
+                  <span class="text-weight-bold text-white">{{ props.row.player }}</span>
                 </div>
-                <span class="text-weight-bold text-white">{{ props.row.player }}</span>
-              </div>
-            </q-td>
-          </template>
+              </q-td>
+            </template>
 
-          <!-- TEAM -->
-          <template #body-cell-team="props">
-            <q-td :props="props">
-              <div class="stats-person-cell">
-                <div class="sport-crest-container stats-team-crest">
-                  <ImagePreview
-                    :src="props.row.teamLogoUrl || getDefaultTeamLogo({ _id: props.row.teamId, name: props.row.team })"
-                    :fallback="getDefaultTeamLogo({ _id: props.row.teamId, name: props.row.team })"
-                    :alt="`Escudo de ${props.row.team}`"
-                    width="24px"
-                    height="24px"
-                  />
+            <!-- TEAM -->
+            <template #body-cell-team="props">
+              <q-td :props="props">
+                <div class="stats-person-cell">
+                  <div class="sport-crest-container stats-team-crest">
+                    <ImagePreview
+                      :src="props.row.teamLogoUrl || getDefaultTeamLogo({ _id: props.row.teamId, name: props.row.team })"
+                      :fallback="getDefaultTeamLogo({ _id: props.row.teamId, name: props.row.team })"
+                      :alt="`Escudo de ${props.row.team}`"
+                      width="24px"
+                      height="24px"
+                    />
+                  </div>
+                  <span class="text-grey-4">{{ props.row.team }}</span>
                 </div>
-                <span class="text-grey-4">{{ props.row.team }}</span>
-              </div>
-            </q-td>
-          </template>
+              </q-td>
+            </template>
 
-          <!-- GOALS -->
-          <template #body-cell-goals="props">
-            <q-td :props="props" class="text-center">
-              <span class="goals-count-badge">
-                {{ props.row.goals }} <small>GOLES</small>
-              </span>
-            </q-td>
-          </template>
-        </q-table>
-
-        <div v-if="!store.scorers.length" class="text-grey-5 text-center q-pa-xl">
-          Todavía no hay goles registrados para el ranking oficial.
-        </div>
-      </q-card-section>
-    </q-card>
+            <!-- GOALS -->
+            <template #body-cell-goals="props">
+              <q-td :props="props" class="text-center">
+                <span class="goals-count-badge">
+                  {{ props.row.goals }} <small>GOLES</small>
+                </span>
+              </q-td>
+            </template>
+          </PlayerStatsTable>
+        </q-card-section>
+      </q-card>
     </div>
   </div>
 </template>

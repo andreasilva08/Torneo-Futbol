@@ -221,6 +221,32 @@ Para desplegar el proyecto en producción, sigue estos pasos:
 
 ---
 
+## 📝 Registro de Cambios y Buenas Prácticas (Refactorización Frontend)
+
+### 2026-11-13 - Optimización Arquitectónica y Modularización
+Se realizó una auditoría técnica y refactorización del frontend para mejorar la mantenibilidad y aplicar principios de ingeniería de software senior (DRY, SOLID, Componentización).
+
+#### 1. Refactorización de Componentes Base
+- **`ImagePreview.vue`**: 
+  - **Eliminación de Código Muerto**: Se removieron props y estados huérfanos (`showStatus`, `showError`, `crossorigin`).
+  - **Estandarización de Estilos**: Migración de dimensiones dinámicas (`:style`) a clases CSS estándar, mejorando la separación de conceptos.
+  - **Limpieza de Sintaxis**: Corrección de reactividad innecesaria y simplificación del template.
+- **`MatchSummaryCard.vue`**:
+  - **Limpieza de Props**: Eliminación de propiedades sin uso dinámico como `compact`, `crestSize`, `useShortNames` y `highlightTeamId`.
+
+#### 2. Componentización de Tablas de Estadísticas (`PlayerStatsTable.vue`)
+Se detectó una alta duplicación de código (~200 líneas) entre las vistas de Goleadores, Asistencias y Porteros. Se implementó una solución arquitectónica mediante:
+- **Componente Wrapper Reutilizable**: Creación de `src/components/PlayerStatsTable.vue`.
+- **Inversión de Control (Slots Dinámicos)**: El componente centraliza el diseño base de la tabla deportiva (estilos Zebra, transiciones Hover, rankings con medallas) pero delega el renderizado de datos específicos mediante slots, permitiendo una personalización total por cada vista.
+- **Reducción de Deuda Técnica**: Se eliminó la redundancia de plantillas y estilos en `ScorersView.vue`, `AssistsView.vue` y `GoalkeepersView.vue`.
+
+#### 3. Impacto en el Proyecto
+- **Mantenibilidad**: Los cambios visuales en el sistema de estadísticas ahora se centralizan en un solo componente.
+- **Rendimiento**: Reducción del tamaño del bundle al eliminar marcado y estilos CSS duplicados.
+- **Escalabilidad**: Estructura preparada para añadir nuevas métricas deportivas sin generar deuda técnica adicional.
+
+---
+
 ## 👥 Autores
 
 Este proyecto fue desarrollado por el equipo de Torneo Barrio para facilitar la gestión de torneos deportivos comunitarios.

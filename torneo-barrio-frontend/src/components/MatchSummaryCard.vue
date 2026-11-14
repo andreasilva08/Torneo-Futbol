@@ -18,10 +18,6 @@ const props = defineProps({
     type: Object,
     required: true,
   },
-  compact: {
-    type: Boolean,
-    default: false,
-  },
   showActions: {
     type: Boolean,
     default: true,
@@ -29,18 +25,6 @@ const props = defineProps({
   showEvents: {
     type: Boolean,
     default: true,
-  },
-  useShortNames: {
-    type: Boolean,
-    default: false,
-  },
-  crestSize: {
-    type: String,
-    default: '48px',
-  },
-  highlightTeamId: {
-    type: String,
-    default: '',
   },
 })
 
